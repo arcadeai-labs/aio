@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { loadPrompts, loadTargets } from "./load.js";
+import { reportRunSummary } from "./run-summary.js";
 import { runAll } from "./runner.js";
 import type { RunConfig } from "./types/config.js";
 import { logger } from "./util/logger.js";
@@ -37,7 +38,15 @@ async function main(): Promise<void> {
     "Configuration loaded",
   );
 
-  await runAll(config);
+  const summary = await runAll(config);
+  reportRunSummary(summary);
+
+  // A provider-level failure must not exit clean. Errored rows are excluded
+  // from every downstream denominator, so a run that quietly lost a provider
+  // still moves the dashboard — for reasons that have nothing to do with the
+  // brand. Absent credentials are exempt (the README promises the rest of the
+  // run completes), unless nothing succeeded at all.
+  if (!summary.ok) process.exit(1);
 }
 
 main().catch((err) => {

@@ -1,16 +1,26 @@
 import pLimit from "p-limit";
 import { getProvider } from "./providers/registry.js";
+import {
+  type RunSummary,
+  type TargetOutcome,
+  summarizeRun,
+} from "./run-summary.js";
 import { JsonlStore } from "./storage/index.js";
 import type { RunConfig } from "./types/config.js";
 import { logger } from "./util/logger.js";
 
-export async function runAll(config: RunConfig): Promise<void> {
+export async function runAll(config: RunConfig): Promise<RunSummary> {
   const limit = pLimit(config.concurrency);
   const store = new JsonlStore(config.outputDir);
 
   const tasks: Array<Promise<void>> = [];
   let completed = 0;
   const total = config.prompts.length * config.targets.length;
+
+  // Keyed by the *target*, not by result metadata: exa rewrites its own
+  // metadata.model to `exa+<synthesisModel>`, so only the target knows which
+  // configured row a result belongs to.
+  const outcomes: TargetOutcome[] = [];
 
   logger.info(
     {
@@ -39,6 +49,11 @@ export async function runAll(config: RunConfig): Promise<void> {
           });
 
           await store.append(result);
+          outcomes.push({
+            provider: target.provider,
+            model: target.model,
+            error: result.error,
+          });
 
           completed++;
           logger.info(
@@ -62,4 +77,6 @@ export async function runAll(config: RunConfig): Promise<void> {
     { total: completed, outputFile: store.getFilePath() },
     "Run complete",
   );
+
+  return summarizeRun(config.targets, outcomes);
 }

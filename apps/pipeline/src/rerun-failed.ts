@@ -2,7 +2,14 @@ import { readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import pLimit from "p-limit";
 import { getProvider } from "./providers/registry.js";
+import {
+  type TargetOutcome,
+  distinctTargets,
+  reportRunSummary,
+  summarizeRun,
+} from "./run-summary.js";
 import { targetForProvider } from "./targets.js";
+import type { TargetEntry } from "./types/config.js";
 import type { UnifiedResult } from "./types/unified-result.js";
 import { logger } from "./util/logger.js";
 
@@ -75,6 +82,8 @@ async function main(): Promise<void> {
   const limit = pLimit(concurrency);
   let done = 0;
   let stillFailing = 0;
+  const outcomes: TargetOutcome[] = [];
+  const attempted: TargetEntry[] = [];
 
   const reruns = await Promise.all(
     failed.map((rec) =>
@@ -85,6 +94,13 @@ async function main(): Promise<void> {
             { provider: rec.metadata.provider, id: rec.id },
             "No target config for provider; keeping original error record",
           );
+          // Still an unrecovered failure — count it so the summary cannot
+          // report a clean re-run over records it never touched.
+          outcomes.push({
+            provider: rec.metadata.provider,
+            model: rec.metadata.model,
+            error: rec.error,
+          });
           return rec;
         }
 
@@ -96,6 +112,13 @@ async function main(): Promise<void> {
           model: target.model,
           runId,
           options: target.options,
+        });
+
+        attempted.push(target);
+        outcomes.push({
+          provider: target.provider,
+          model: target.model,
+          error: result.error,
         });
 
         done++;
@@ -136,6 +159,12 @@ async function main(): Promise<void> {
     },
     "Re-run complete",
   );
+
+  // Only the targets this re-run actually retried; a target with nothing left
+  // to recover was never attempted here.
+  const summary = summarizeRun(distinctTargets(attempted), outcomes);
+  reportRunSummary(summary);
+  if (!summary.ok) process.exit(1);
 }
 
 async function latestResultsDate(resultsDir: string): Promise<string | null> {
