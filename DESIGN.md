@@ -211,15 +211,40 @@ DB state — the only correct option given old runs can change retroactively.
 
 `Global · Branded · Unbranded`. Sourced from `promptMeta.brandedType`.
 
-### Theme (orthogonal facet) — from `promptCategory` (CSV `topic`)
+### Theme (orthogonal facet) — from `promptCategory`
 
 e.g. "Alternatives & Vendor Comparison", "Agent Authorization". Themes are a
 filter/breakdown that composes with the segment, so theme performance can be
 inspected **within** any segment (segment × theme cross-tab).
 
 > Naming note: the source field literally named `promptCategory` holds the
-> **theme**; the source CSV column named `category` holds **branded_type**. The
-> schema uses the canonical names `theme` / `branded_type` to avoid this trap.
+> **theme**. The schema uses the canonical names `theme` / `branded_type` to
+> avoid this trap.
+
+**Corrected 2026-09-16 (driver, issue #11).** This section previously said the
+theme came from the CSV `topic` column and that the CSV `category` column held
+`branded_type`. Both were wrong for the shipped prompt set, and a forker writing
+queries from that description would have filtered on the wrong field.
+
+`apps/pipeline/src/load.ts` supports **two CSV dialects**, and resolves the theme
+as `theme_name || category`:
+
+| | legacy dialect | shipped `prompts/default.csv` |
+|---|---|---|
+| columns | `prompt, category, theme_name, …` | `prompt, category, topic, brandedType` |
+| theme (`promptCategory`) | `theme_name` | **`category`** |
+| `branded_type` | `category`, moved to `promptMeta.brandedType` | `brandedType`, carried through as meta |
+| `topic` | — | a sub-topic, **not** the theme; survives in `promptMeta` |
+
+So with the shipped CSV, a row of `category="Brand Understanding",
+topic="Product Overview", brandedType="Branded"` ingests as
+`theme = "Brand Understanding"`, `branded_type = "branded"` — confirmed against a
+real ingested row.
+
+The old description matched the legacy dialect, where `category` really did hold
+branded_type. It was not updated when the shipped prompt set moved to explicit
+`topic` and `brandedType` columns. **The code is authoritative here**; `SCHEMA.md`
+documents the resolved behaviour.
 
 ### Cohorts (always labeled; never a bare number)
 
