@@ -9,17 +9,32 @@
 // artefact is worse than no artefact, because someone downloads it a month
 // later and judges it.
 //
-// So this counts what the rows actually are. A row is usable when the pipeline
-// recorded no error for it AND it carries response text — a `UnifiedResult`
-// whose `error` is null but whose `responseText` is empty has nothing for the
-// judge to score, and would reach the dashboard as a confident zero.
+// So this counts what the rows actually are, sorting each into one of four
+// buckets. Two of them are tolerated and two are not, and the distinction is
+// the whole design:
 //
-// The bar is "at least one usable row", not "no errors". A run where some
-// providers failed is a legitimate configuration — the workflow's Preflight
-// step already warns when only part of the key set is present — and failing it
-// here would make a deliberate single-provider setup un-runnable. Making those
-// partial failures visible in the run summary is issue #9's job, not this
-// guard's.
+//   usable       no error recorded, and response text with something in it.
+//   errored      the provider failed. TOLERATED. A run where some providers
+//                errored is a legitimate configuration — Preflight already
+//                warns when only part of the key set is present, and failing
+//                here would make a deliberate single-provider setup
+//                un-runnable. Surfacing these in the run summary is #9's.
+//   empty        no error, but no response text either. Not corruption: the
+//                pipeline wrote exactly what it got. Nothing for the judge to
+//                score, though, so it cannot be the only thing in the file —
+//                an empty answer reaches the dashboard as a confident zero.
+//   unparseable  the line is not JSON. NOT TOLERATED AT ANY COUNT. This is a
+//                different kind of fact from the other three: an errored row
+//                is the pipeline faithfully recording a provider failing,
+//                whereas an unparseable row means the artefact itself is
+//                damaged and no longer a trustworthy record of what the
+//                providers said. "Some of it parsed" is not a basis for
+//                uploading it as the week's data.
+//
+// Whitespace does not count as response text. `" \t "` is an empty answer
+// wearing a costume, and it must not satisfy the guard. The test is `trim()`
+// and nothing more — no minimum length, because a legitimately terse answer
+// ("Yes, Taskwell is a to-do app.") is a real result.
 //
 // Reads OUTPUT_DIR (the same variable the pipeline writes to), default
 // "results". Exits 1 with a GitHub annotation when the artefact is unusable.
@@ -32,11 +47,19 @@ interface Tally {
   rows: number;
   usable: number;
   errored: number;
-  unreadable: number;
+  empty: number;
+  unparseable: number;
 }
 
 function tally(file: string, text: string): Tally {
-  const t: Tally = { file, rows: 0, usable: 0, errored: 0, unreadable: 0 };
+  const t: Tally = {
+    file,
+    rows: 0,
+    usable: 0,
+    errored: 0,
+    empty: 0,
+    unparseable: 0,
+  };
 
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
@@ -46,7 +69,7 @@ function tally(file: string, text: string): Tally {
     try {
       row = JSON.parse(line);
     } catch {
-      t.unreadable++;
+      t.unparseable++;
       continue;
     }
 
@@ -54,13 +77,11 @@ function tally(file: string, text: string): Tally {
       t.errored++;
     } else if (
       typeof row.responseText === "string" &&
-      row.responseText !== ""
+      row.responseText.trim() !== ""
     ) {
       t.usable++;
     } else {
-      // No error recorded and nothing to read. Counted apart from errored rows
-      // so the log says which of the two shapes went wrong.
-      t.unreadable++;
+      t.empty++;
     }
   }
 
@@ -103,14 +124,15 @@ const total = tallies.reduce(
     rows: acc.rows + t.rows,
     usable: acc.usable + t.usable,
     errored: acc.errored + t.errored,
-    unreadable: acc.unreadable + t.unreadable,
+    empty: acc.empty + t.empty,
+    unparseable: acc.unparseable + t.unparseable,
   }),
-  { rows: 0, usable: 0, errored: 0, unreadable: 0 },
+  { rows: 0, usable: 0, errored: 0, empty: 0, unparseable: 0 },
 );
 
 for (const t of tallies) {
   console.log(
-    `${t.file}: ${t.rows} rows, ${t.usable} usable, ${t.errored} errored, ${t.unreadable} unreadable`,
+    `${t.file}: ${t.rows} rows, ${t.usable} usable, ${t.errored} errored, ${t.empty} empty, ${t.unparseable} unparseable`,
   );
 }
 
@@ -121,16 +143,25 @@ if (total.rows === 0) {
   );
 }
 
+// Checked before the usable count, and independently of it: one damaged line
+// discredits the file whether or not the rest of it parsed.
+if (total.unparseable > 0) {
+  fail(
+    "Results file is corrupt",
+    `${total.unparseable} of ${total.rows} lines are not valid JSON. Unlike a provider error, which the pipeline records faithfully, this means the artefact itself is damaged — it is no longer a trustworthy record of what the providers said, so the other ${total.rows - total.unparseable} lines are not a basis for uploading it as this week's data.`,
+  );
+}
+
 if (total.usable === 0) {
   fail(
     "No usable results",
-    `All ${total.rows} rows are unusable (${total.errored} carry a provider error, ${total.unreadable} have no response text). This is what a run with missing or rejected API keys produces: it exits 0, writes a full-size file, and every row in it is a failure. Check the provider keys in this repository's secrets.`,
+    `All ${total.rows} rows are unusable (${total.errored} carry a provider error, ${total.empty} have no response text). This is what a run with missing or rejected API keys produces: it exits 0, writes a full-size file, and every row in it is a failure. Check the provider keys in this repository's secrets.`,
   );
 }
 
 if (total.usable < total.rows) {
   console.log(
-    `::warning title=Some results are unusable::${total.usable} of ${total.rows} rows are usable (${total.errored} errored, ${total.unreadable} without response text). A partial run is legitimate, but those rows are excluded from every analysis denominator.`,
+    `::warning title=Some results are unusable::${total.usable} of ${total.rows} rows are usable (${total.errored} errored, ${total.empty} without response text). A partial run is legitimate, but those rows are excluded from every analysis denominator.`,
   );
 }
 

@@ -221,12 +221,54 @@ describe("usable-results guard", () => {
     expect(r.output).toContain("3 have no response text");
   });
 
+  test("fails when response text is only whitespace", async () => {
+    // Round-2 regression, the reviewer's exact fixture. `" \t "` is an empty
+    // answer wearing a costume; it reached the guard as usable.
+    const r = await withResults({
+      "results-2026-09-14.jsonl": ok(" \t ") + ok("\n  \n"),
+    });
+    expect(r.exitCode).toBe(1);
+    expect(r.output).toContain("::error title=No usable results::");
+    expect(r.output).toContain("2 have no response text");
+  });
+
+  test("counts a legitimately terse answer as usable", async () => {
+    // The guard against over-correcting finding 1 into a minimum length. A
+    // short real answer is a real result.
+    const r = await withResults({ "results-2026-09-14.jsonl": ok("No.") });
+    expect(r.exitCode).toBe(0);
+    expect(r.output).toContain("ok: 1 of 1 rows usable");
+  });
+
   test("fails when the file is not parseable as JSONL", async () => {
     const r = await withResults({
       "results-2026-09-14.jsonl": "not json\nalso not json\n",
     });
     expect(r.exitCode).toBe(1);
-    expect(r.output).toContain("::error title=No usable results::");
+    expect(r.output).toContain("::error title=Results file is corrupt::");
+  });
+
+  test("fails on one malformed line even when another row is good", async () => {
+    // Round-2 regression. A damaged artefact is a different kind of fact from
+    // a failed provider: the pipeline records a provider error faithfully,
+    // whereas an unparseable line means the file no longer says what the
+    // providers said. "Some of it parsed" is not a basis for uploading it.
+    const r = await withResults({
+      "results-2026-09-14.jsonl": `${ok("Taskwell is a to-do app.")}not json\n`,
+    });
+    expect(r.exitCode).toBe(1);
+    expect(r.output).toContain("::error title=Results file is corrupt::");
+    expect(r.output).toContain("1 of 2 lines are not valid JSON");
+  });
+
+  test("fails on a single malformed line among many good rows", async () => {
+    // Not tolerated at any count — there is no ratio at which corruption
+    // becomes acceptable.
+    const r = await withResults({
+      "results-2026-09-14.jsonl": `${ok("one") + ok("two") + ok("three")}not json\n`,
+    });
+    expect(r.exitCode).toBe(1);
+    expect(r.output).toContain("::error title=Results file is corrupt::");
   });
 
   test("passes a partial run, and says how partial it was", async () => {
@@ -248,7 +290,9 @@ describe("usable-results guard", () => {
     });
     expect(r.exitCode).toBe(0);
     expect(r.output).not.toContain("::warning");
-    expect(r.output).toContain("3 rows, 3 usable, 0 errored, 0 unreadable");
+    expect(r.output).toContain(
+      "3 rows, 3 usable, 0 errored, 0 empty, 0 unparseable",
+    );
   });
 
   test("counts every results file the run left behind", async () => {
