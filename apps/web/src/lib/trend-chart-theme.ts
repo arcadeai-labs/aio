@@ -39,6 +39,17 @@ export const MIN_SERIES_CONTRAST = 7;
  */
 export const MIN_SERIES_SEPARATION = 20;
 
+/** Half-width, in degrees, of the hue arc around pure red (0°) that
+ * {@link reservedSignalHue} treats as red. */
+export const RESERVED_RED_ARC = 20;
+
+/** The hue arc, in degrees, that {@link reservedSignalHue} treats as green. */
+export const RESERVED_GREEN_ARC: readonly [number, number] = [90, 160];
+
+/** Below this HSL saturation a colour reads as grey rather than as its hue, so
+ * the reserved-hue rule does not apply to it. */
+export const MIN_SIGNAL_SATURATION = 0.25;
+
 const channel = (c: number): number => {
   const s = c / 255;
   return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
@@ -84,6 +95,61 @@ export function colorSeparation(a: string, b: string): number {
   const [l1, a1, b1] = lab(a);
   const [l2, a2, b2] = lab(b);
   return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
+}
+
+/** Hue (degrees) and HSL saturation, the two axes the reserved-colour rule is
+ * stated in. Hue is undefined for a pure grey; 0° with zero saturation is the
+ * conventional answer and the saturation floor rejects it anyway. */
+const hsl = (hex: string): { hue: number; saturation: number } => {
+  const [r, g, b] = rgb(hex).map((c) => c / 255) as [number, number, number];
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let hue = 0;
+  if (d !== 0) {
+    if (max === r) hue = 60 * (((g - b) / d) % 6);
+    else if (max === g) hue = 60 * ((b - r) / d + 2);
+    else hue = 60 * ((r - g) / d + 4);
+  }
+  if (hue < 0) hue += 360;
+  const l = (max + min) / 2;
+  return { hue, saturation: d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1)) };
+};
+
+/**
+ * DESIGN.md §9: "green/red reserved strictly for deltas and good/bad signal".
+ *
+ * On this dashboard those two hues carry meaning — gained/lost mention, accuracy
+ * up/down, rank improved — so an *ordinary* series drawn in either one lies. A
+ * competitor line in green reads as "good", and on share of voice the competitor
+ * climbing is the bad news; the colour would invert the signal. Categorical
+ * palettes therefore have to steer clear of both, which is a constraint on hue,
+ * not on any particular hex value a reviewer happens to spot.
+ *
+ * "Reserved" is defined here as a hue band plus a chroma floor:
+ *
+ * - **red** — within {@link RESERVED_RED_ARC} of pure red (0°). ±20° is the
+ *   usual "reads as red" window: past it lie orange (#fb923c, 27°) and rose
+ *   (#f472b6, 329°), which nobody scanning calls red.
+ * - **green** — {@link RESERVED_GREEN_ARC}, 90°–160°, chartreuse through spring
+ *   green. It stops short of cyan-green, so teal (#2dd4bf, 173°) stays available
+ *   as a category colour; it comfortably contains the rank-1 green (142°).
+ * - both need saturation ≥ {@link MIN_SIGNAL_SATURATION}. A near-neutral sitting
+ *   at a red or green hue angle reads as grey, and greys are not signal.
+ *
+ * The bands are deliberately wider than the exact values in use, since the rule
+ * is about what a colour *reads as*, not about matching a palette entry.
+ *
+ * @returns which reserved role the colour would be read as, or `null` if it is
+ *   free to be an ordinary series colour.
+ */
+export function reservedSignalHue(hex: string): "green" | "red" | null {
+  const { hue, saturation } = hsl(hex);
+  if (saturation < MIN_SIGNAL_SATURATION) return null;
+  const [lo, hi] = RESERVED_GREEN_ARC;
+  if (hue >= lo && hue <= hi) return "green";
+  const fromRed = Math.min(hue, 360 - hue);
+  return fromRed <= RESERVED_RED_ARC ? "red" : null;
 }
 
 /** A series carries a drawable line only if at least one run has a value. An

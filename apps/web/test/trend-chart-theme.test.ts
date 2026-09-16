@@ -16,6 +16,7 @@ import {
   contrastRatio,
   hasDrawableSeries,
   isDrawable,
+  reservedSignalHue,
 } from "../src/lib/trend-chart-theme";
 
 // Issue #25: all three TrendChart instances rendered as apparently empty panels
@@ -100,6 +101,65 @@ describe("overlapping series stay individually traceable", () => {
         MIN_SERIES_SEPARATION,
       );
     }
+  });
+});
+
+describe("green and red stay reserved for signal (DESIGN.md §9)", () => {
+  // Round 1 of review caught SOV_PALETTE[0] = #4ade80 (the literal rank-1 green)
+  // and SOV_PALETTE[9] = #f87171 on ordinary competitor lines. The suite passed
+  // 30/30 at the time: it held contrast and separation and said nothing about
+  // *meaning*, so a test could not fail on the thing that broke. This block is
+  // that missing assertion. A competitor drawn in green reads as "good", and on
+  // share of voice the competitor climbing is the bad news — the colour inverts
+  // the signal, which is worse than an ugly palette.
+
+  // A classifier that never fires would make every test below pass while
+  // protecting nothing, so pin the positives first.
+  test("fires on the colours the rule exists to protect", () => {
+    expect(reservedSignalHue(RANK_COLOR["1"])).toBe("green");
+    expect(reservedSignalHue(RANK_COLOR.not_ranked)).toBe("red");
+    // The two values review caught, and the Tailwind 500s a contributor
+    // reaching for "a green"/"a red" would most likely paste.
+    expect(reservedSignalHue("#4ade80")).toBe("green");
+    expect(reservedSignalHue("#f87171")).toBe("red");
+    expect(reservedSignalHue("#22c55e")).toBe("green");
+    expect(reservedSignalHue("#ef4444")).toBe("red");
+    expect(reservedSignalHue("#16a34a")).toBe("green");
+    expect(reservedSignalHue("#dc2626")).toBe("red");
+  });
+
+  test("does not fire on neighbouring hues that read as their own colour", () => {
+    // The bands have to leave a categorical palette somewhere to stand.
+    expect(reservedSignalHue("#2dd4bf")).toBeNull(); // teal, 173°
+    expect(reservedSignalHue("#38bdf8")).toBeNull(); // sky, 198°
+    expect(reservedSignalHue("#f472b6")).toBeNull(); // rose, 329°
+    expect(reservedSignalHue("#fb923c")).toBeNull(); // orange, 27°
+    expect(reservedSignalHue("#fbbf24")).toBeNull(); // amber, 43°
+  });
+
+  test("does not fire on a near-neutral sitting at a reserved hue angle", () => {
+    // A grey is not signal, whatever its hue angle computes to.
+    expect(reservedSignalHue(BRAND_SOV)).toBeNull();
+    expect(reservedSignalHue("#4a4442")).toBeNull(); // 8°, saturation 0.05
+  });
+
+  for (const [i, hex] of SOV_PALETTE.entries()) {
+    test(`SOV_PALETTE[${i}] (${hex}) is not a reserved signal colour`, () => {
+      // competitive.tsx assigns these round-robin to *every* competitor series.
+      expect(reservedSignalHue(hex)).toBeNull();
+    });
+  }
+
+  test("the single /cited line is not a reserved signal colour either", () => {
+    expect(reservedSignalHue(REACH_LINE)).toBeNull();
+  });
+
+  test("RANK_COLOR is the sanctioned use and keeps its green and red", () => {
+    // The rule is "reserved *for* good/bad signal", not "never used". The rank
+    // ramp is exactly that signal, and it is out of scope for issue #25 — this
+    // asserts the fix did not overshoot into it.
+    expect(RANK_COLOR["1"]).toBe("#4ade80");
+    expect(RANK_COLOR.not_ranked).toBe("#ff8585");
   });
 });
 
