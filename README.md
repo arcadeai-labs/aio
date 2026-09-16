@@ -247,6 +247,13 @@ Only verified Google accounts on those exact domains get in. Subdomains and
 look-alikes (`evil.example.com`, `example.com.evil.com`, `notexample.com`) are
 rejected — see `packages/core/test/auth-gate.test.ts`.
 
+`BETTER_AUTH_SECRET` is only needed once you set `ALLOWED_EMAIL_DOMAINS`. Until
+then there is no sign-in flow and therefore no session to sign, so the app
+generates a random ephemeral secret at startup, prints a warning naming the
+variable, and carries on. Set `ALLOWED_EMAIL_DOMAINS` without a secret and the
+app refuses to start rather than sign real sessions with a key nobody chose —
+the reasoning is in `apps/web/src/lib/auth-secret.ts`.
+
 ## Querying the raw results
 
 ```bash

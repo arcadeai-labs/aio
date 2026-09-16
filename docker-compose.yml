@@ -77,16 +77,20 @@ services:
       DATABASE_SSL: disable
       PORT: 3000
       # ── Access control ───────────────────────────────────────────────────
-      # Unset: the dashboard is OPEN — no sign-in, no identity provider, which
-      # is what makes `docker compose up` enough for a fresh clone. To require
-      # Google sign-in, set all four of the variables below (see README "Access
-      # control") and put the domain list in ALLOWED_EMAIL_DOMAINS:
+      # ALLOWED_EMAIL_DOMAINS is the switch for the whole access model. Unset:
+      # the dashboard is OPEN — no sign-in, no identity provider, no session —
+      # which is what makes `docker compose up` enough for a fresh clone. Set it
+      # to a comma-separated domain list (see README "Access control") to
+      # require Google sign-in; GOOGLE_CLIENT_ID/SECRET and BETTER_AUTH_SECRET
+      # then become required, and all of them are already passed through below.
       #
-      #   ALLOWED_EMAIL_DOMAINS: example.com,partner.dev
-      #   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
-      #   BETTER_AUTH_URL: http://localhost:3000
-      #   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      #   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Every variable here is passed unconditionally with an empty default, so
+      # a host with no `.env` delivers "". The app treats "" as absent. In
+      # particular BETTER_AUTH_SECRET: with access open it generates a labelled
+      # ephemeral secret and warns; with access restricted it refuses to boot
+      # rather than sign real sessions with a key nobody chose. See
+      # apps/web/src/lib/auth-secret.ts — passing an empty string here used to
+      # kill the web process on its first render (#20).
       ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:${AIO_PORT_WEB:-3000}}
