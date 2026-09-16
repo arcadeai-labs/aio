@@ -311,6 +311,24 @@ aggregates, editorial reading view for single results.
   metric counters and chart draw-in, subtle row/hover states. Purposeful only.
 - **Charts (visx), themed from scratch:** thin lines, sparse grid, sparklines in
   rows. No default chart-library styling.
+
+  *Amended 2026-09-16 (driver, issue #25).* "Thin lines" is an aesthetic
+  direction, not a numeric one. Measured on the near-black surface, `TrendChart`
+  at its original stroke weight and palette saturation rendered as an **apparently
+  empty panel** at default viewport scale — two independent verification agents
+  nearly reported all three instances as blank, including one drawing a single
+  unoccluded series. Two of the six behaviours the seed corpus exists to
+  demonstrate live only in those charts.
+
+  `TrendChart` therefore uses a heavier stroke and brighter series colours than
+  the line above would suggest. The intent is unchanged: still thin by ordinary
+  standards, grid still sparse, no default chart-library styling. The deviation is
+  scoped to `TrendChart` — `HeatStrip`, `TrajectoryGrid` and the horizontal bars
+  are legible as specified and are untouched — and it does not relax the rule that
+  **green and red stay reserved for deltas and good/bad signal**, so neither may be
+  recruited as an ordinary series colour.
+
+  A chart nobody can see does not serve a dense operator-console.
 - **Density & input:** compact 4px-grid rows, keyboard-navigable scoreboard and
   switcher.
 - Tokens as CSS variables so a light theme is *possible* later, not built now.
