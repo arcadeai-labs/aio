@@ -29,13 +29,30 @@
 //     `/login`; `/login` itself redirects away.
 //   - `lib/require-session.ts` — the data boundary every server function calls
 //     — returns before it ever looks at a session.
-//   - No Google provider is registered, so no sign-in can be started and no
-//     session can be minted.
+//   - No social provider is registered (`signInEnabled` in `lib/auth.ts`), so
+//     no sign-in can be started, and both database hooks deny outright, so no
+//     session can be minted even if one were.
 //
 // So in the default configuration there is no sign-in flow, no session, and
 // nothing the signing secret protects. An ephemeral secret there costs exactly
 // one thing — sessions that would not survive a restart — and there are no
 // sessions. That is why generating one is safe *there specifically*.
+//
+// The fourth bullet is the load-bearing one, and it was FALSE when this file
+// was first written. Provider registration keyed off the Google credentials
+// alone, so a deployment with `ALLOWED_EMAIL_DOMAINS` unset and
+// `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` set — an ordinary developer `.env`
+// — answered `POST /api/auth/sign-in/social` with 200 and a live
+// accounts.google.com authorize URL, and the callback could mint a session
+// signed by the ephemeral secret generated below. The premise had to become
+// true rather than the conclusion softened: `signInEnabled` now requires the
+// same switch, and `apps/web/test/auth-session-gate.test.ts` drives the public
+// `/api/auth/*` route with the Google variables SET to prove it.
+//
+// Do not weaken this to "require a real secret when OAuth is configured". That
+// would keep a sign-in path alive in a mode the rest of the system believes is
+// unauthenticated, where an empty domain list means every Google account on
+// earth is admissible. The secret is not the thing to fix.
 //
 // The moment `ALLOWED_EMAIL_DOMAINS` is set, every clause above inverts:
 // sessions are real, they carry identity, and they gate data. A per-process
