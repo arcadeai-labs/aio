@@ -12,6 +12,7 @@ import {
 } from "../lib/result-view";
 import { resolveUser } from "../lib/route-guard";
 import { SEGMENT_LABEL, toSegment } from "../lib/segments";
+import { fetchSyntheticRuns } from "../lib/synthetic";
 
 // The single-result editorial reading view (issue #10, DASHBOARD_SPEC §8.3):
 // every part of one (prompt × provider) result — the prompt and its metadata,
@@ -32,10 +33,13 @@ function validateSearch(search: Record<string, unknown>): ResultSearch {
 export const Route = createFileRoute("/result/$id")({
   validateSearch,
   beforeLoad: resolveUser,
-  loader: async ({ context, params }) => ({
-    user: context.user,
-    result: await fetchResultDetail({ data: { id: params.id } }),
-  }),
+  loader: async ({ context, params }) => {
+    const [result, syntheticRuns] = await Promise.all([
+      fetchResultDetail({ data: { id: params.id } }),
+      fetchSyntheticRuns(),
+    ]);
+    return { user: context.user, result, syntheticRuns };
+  },
   component: ResultDetailView,
 });
 
@@ -185,7 +189,7 @@ function Verdict({
 }
 
 function ResultDetailView() {
-  const { user, result } = Route.useLoaderData();
+  const { user, result, syntheticRuns } = Route.useLoaderData();
   const { segment } = Route.useSearch();
 
   // Drop provider-supplied blank rows so the sections reflect real content (and
@@ -197,7 +201,13 @@ function ResultDetailView() {
 
   return (
     <main className="shell">
-      <Nav active={null} segment={segment} email={user?.email} />
+      <Nav
+        active={null}
+        segment={segment}
+        email={user?.email}
+        syntheticRuns={syntheticRuns}
+        run={result?.runDate}
+      />
 
       <section className="rd">
         {!result ? (

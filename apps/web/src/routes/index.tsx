@@ -32,6 +32,7 @@ import {
   score,
 } from "../lib/scoreboard-view";
 import { SEGMENTS, SEGMENT_LABEL, toSegment } from "../lib/segments";
+import { fetchSyntheticRuns } from "../lib/synthetic";
 
 // URL state for the scoreboard's composable controls. The segment selector and
 // the two breakdown toggles (by-theme, by-provider) plus the active run all live
@@ -62,12 +63,14 @@ export const Route = createFileRoute("/")({
   // The byTheme/byProvider toggles only reveal already-fetched rows, so they stay
   // out of the deps (no refetch on toggle).
   loaderDeps: ({ search }) => ({ segment: search.segment, run: search.run }),
-  loader: async ({ context, deps }) => ({
-    user: context.user,
-    scoreboard: await fetchScoreboard({
-      data: { segment: deps.segment, run: deps.run },
-    }),
-  }),
+  loader: async ({ context, deps }) => {
+    // Independent reads: the marker's run list never depends on the scoreboard.
+    const [scoreboard, syntheticRuns] = await Promise.all([
+      fetchScoreboard({ data: { segment: deps.segment, run: deps.run } }),
+      fetchSyntheticRuns(),
+    ]);
+    return { user: context.user, scoreboard, syntheticRuns };
+  },
   component: Home,
 });
 
@@ -862,7 +865,7 @@ function Headline({
 }
 
 function Home() {
-  const { user, scoreboard } = Route.useLoaderData();
+  const { user, scoreboard, syntheticRuns } = Route.useLoaderData();
   const search = Route.useSearch();
   const { byTheme, byProvider } = search;
   const navigate = useNavigate({ from: Route.fullPath });
@@ -882,7 +885,15 @@ function Home() {
   }, [search.run, activeDate, navigate]);
   return (
     <main className="shell">
-      <Nav active="scoreboard" segment={search.segment} email={user?.email} />
+      <Nav
+        active="scoreboard"
+        segment={search.segment}
+        email={user?.email}
+        syntheticRuns={syntheticRuns}
+        // Both runs the scoreboard renders: the active one and the prior one every
+        // WoW delta is computed against.
+        run={[activeDate, scoreboard.prior?.runDate]}
+      />
       <section className="shell__body shell__body--top">
         <Headline
           scoreboard={scoreboard}

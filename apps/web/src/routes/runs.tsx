@@ -4,13 +4,17 @@ import { RunStatusChip } from "../components/RunStatusChip";
 import { resolveUser } from "../lib/route-guard";
 import { runHealth } from "../lib/run-health";
 import { fetchRuns } from "../lib/runs";
+import { fetchSyntheticRuns } from "../lib/synthetic";
 
 export const Route = createFileRoute("/runs")({
   beforeLoad: resolveUser,
-  loader: async ({ context }) => ({
-    user: context.user,
-    runs: await fetchRuns(),
-  }),
+  loader: async ({ context }) => {
+    const [runs, syntheticRuns] = await Promise.all([
+      fetchRuns(),
+      fetchSyntheticRuns(),
+    ]);
+    return { user: context.user, runs, syntheticRuns };
+  },
   component: Runs,
 });
 
@@ -27,10 +31,19 @@ function formatTimestamp(iso: string): string {
 }
 
 function Runs() {
-  const { user, runs } = Route.useLoaderData();
+  const { user, runs, syntheticRuns } = Route.useLoaderData();
+  // Every run is listed here, so the header marker is corpus-wide; the per-row
+  // "seeded" tag below is what keeps a measured week from being read next to an
+  // invented one.
+  const synthetic = new Set(syntheticRuns);
   return (
     <main className="shell">
-      <Nav active="runs" segment="global" email={user?.email} />
+      <Nav
+        active="runs"
+        segment="global"
+        email={user?.email}
+        syntheticRuns={syntheticRuns}
+      />
       <section className="runs">
         <div className="runs__head">
           <h1 className="runs__title">Runs</h1>
@@ -63,7 +76,15 @@ function Runs() {
                 const health = runHealth(run);
                 return (
                   <tr key={run.runDate}>
-                    <td className="runs__date">{run.runDate}</td>
+                    <td className="runs__date">
+                      {run.runDate}
+                      {/* Sits with the date, not in the status column: seeded is a
+                          fact about where the run came from, not about how cleanly
+                          it ingested (issue #28's RunStatusChip still owns that). */}
+                      {synthetic.has(run.runDate) ? (
+                        <span className="runs__seeded">seeded</span>
+                      ) : null}
+                    </td>
                     <td className="runs__num">{run.resultCount}</td>
                     <td className="runs__num">{run.verdictCount}</td>
                     <td
