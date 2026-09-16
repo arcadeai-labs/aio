@@ -12,9 +12,13 @@ import { BaseProvider } from "./base.js";
 export class AnthropicProvider extends BaseProvider {
   readonly name = "anthropic";
   readonly displayName = "Anthropic Claude";
+  // Checked against Anthropic's models overview on 2026-09-16: the current
+  // lineup is claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5-20251001
+  // (plus claude-fable-5-1). claude-sonnet-4-6 and claude-opus-4-7 are listed
+  // as legacy — still served, but a generation behind.
   readonly supportedModels = [
-    "claude-sonnet-4-6",
-    "claude-opus-4-7",
+    "claude-sonnet-5",
+    "claude-opus-5",
     "claude-haiku-4-5-20251001",
   ];
 

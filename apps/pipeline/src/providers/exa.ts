@@ -37,8 +37,11 @@ export class ExaProvider extends BaseProvider {
   protected async execute(input: ProviderRunInput): Promise<UnifiedResult> {
     const synthesisProvider =
       (input.options?.synthesisProvider as string) ?? "openai";
+    // Keep this default in step with DEFAULT_TARGETS' exa entry: a target file
+    // that omits synthesisModel must not quietly run a different model from the
+    // one the default matrix declares.
     const synthesisModel =
-      (input.options?.synthesisModel as string) ?? "gpt-5.4-mini";
+      (input.options?.synthesisModel as string) ?? "gpt-5.6-luna";
 
     // Phase 1: Exa search
     const exaResults = await this.exa.searchAndContents(input.prompt, {

@@ -12,7 +12,10 @@ import { BaseProvider } from "./base.js";
 export class OpenAIProvider extends BaseProvider {
   readonly name = "openai";
   readonly displayName = "OpenAI";
-  readonly supportedModels = ["gpt-5.2", "gpt-5.4-mini"];
+  // Checked against OpenAI's model catalog on 2026-09-16: the current lineup is
+  // gpt-6-astra / gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna. gpt-5.2 and
+  // gpt-5.4-mini are still served but two generations behind.
+  readonly supportedModels = ["gpt-5.6-terra", "gpt-5.6-luna"];
 
   private _client?: OpenAI;
 
