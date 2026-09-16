@@ -37,6 +37,7 @@ import { db, findUserAccessFields, schema } from "@aio/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
+import { resolveAuthSecret } from "./auth-secret";
 
 /**
  * Domains permitted to sign in, parsed once at module load.
@@ -78,6 +79,20 @@ function denyUnlessAllowed(input: {
   }
 }
 
+/**
+ * Session signing secret.
+ *
+ * Resolved before `betterAuth()` so the image's `NODE_ENV=production` can never
+ * reach better-auth's own default-secret throw, which fired lazily on the first
+ * render and killed the process mid-request (#20). `lib/auth-secret.ts` carries
+ * the access-model reasoning for why generating one is safe when — and only
+ * when — `ALLOWED_EMAIL_DOMAINS` is unset.
+ */
+const authSecret = resolveAuthSecret({
+  supplied: process.env.BETTER_AUTH_SECRET,
+  accessRestricted,
+});
+
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
 // Only register the Google provider when fully configured. Registering it with
@@ -96,9 +111,9 @@ export const auth = betterAuth({
   // baseURL is required in production (set BETTER_AUTH_URL to the custom domain);
   // in local dev better-auth falls back to the request origin.
   baseURL: process.env.BETTER_AUTH_URL,
-  // Session signing secret. Required in production; better-auth warns and uses a
-  // dev fallback when unset locally.
-  secret: process.env.BETTER_AUTH_SECRET,
+  // Always a real value — never better-auth's built-in default, which throws
+  // under NODE_ENV=production. See `authSecret` above.
+  secret: authSecret,
 
   database: drizzleAdapter(db, {
     provider: "pg",
