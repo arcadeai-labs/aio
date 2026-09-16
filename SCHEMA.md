@@ -39,6 +39,76 @@ and has no column to query. Table names are the Drizzle/Postgres names from
 
 ---
 
+## How much of this document is confirmed against data
+
+Every field below was checked against three places: the TypeScript contract in
+`packages/core`, the Drizzle table in `packages/db/src/schema/analytics.ts`, and
+the transform seam at `packages/ingest/src/transform.ts` where JSONL names
+become column names. That is a **code** cross-check, and it is enforced on every
+run by `test/schema-doc.test.ts`, which parses this file.
+
+Confirming a field against **data** is a separate and weaker claim, because it
+depends on the corpus having produced the field at all. The credential-free
+corpus (`bun run seed && bun run ingest` — 15 runs, 1,440 results, 1,424
+verdicts) does not exercise everything. Three tiers, stated plainly:
+
+| Tier | What it means | Covers |
+|------|---------------|--------|
+| **Confirmed against an ingested row** | A real row was queried out of Postgres with this field populated | `UnifiedResult`, `SearchQuery`, `SearchResult`, `Citation`, `RunMetadata`, `TokenUsage`, `RunError`, `ResultVerdict` and all its children — except the fields marked † |
+| **Confirmed against real data, no row by design** | Computed from real corpus verdicts by the shipped code; there is no table to query | `WeekComparison`, `ResultDelta`, `WeekComparisonSummary` — every field exercised by `compareWeeks` over two real corpus weeks |
+| **Not exercised by the seeded corpus** † | Contract and destination column verified in code; **no row has ever carried a value**. Treat the Description column as a claim about the producer, not an observation | the six fields marked † below, plus `Learning` and `LearningEvidence` |
+
+**The fields marked † in this document:**
+
+| Field | Seeded coverage | Why it is empty |
+|-------|-----------------|-----------------|
+| `RunMetadata.estimatedCostUsd` | 0 / 1,440 results | Only `anthropic-agent` populates it; the seed generator emits no cost |
+| `SearchResult.pageDate` | 0 / 5,558 search results | Only `exa` and `anthropic` populate it |
+| `Citation.startIndex` | 0 / 3,571 citations | Only `openai` and `openrouter` populate it |
+| `Citation.endIndex` | 0 / 3,571 citations | Same providers |
+| `promptMeta.location` | 0 / 16 prompts | Shipped `prompts/default.csv` has no `location` column |
+| `promptMeta.labels` | 0 rows in `prompt_labels` | Shipped `prompts/default.csv` has no `labels` column |
+
+The gap is at the **source**, not at ingest: these keys are absent from
+`results-*.jsonl` itself (`promptMeta` in the shipped corpus has exactly two
+keys, `brandedType` and `topic`), so the ingest path for them is *untested*
+rather than known-broken.
+
+`Learning` and `LearningEvidence` are a harder case. The only registered
+generator (`movers`, tier `structured`) issues a live judge-model call, so a
+credential-free corpus cannot produce one at all. Both contracts are documented
+from `packages/core/src/learning.ts` and its shipped validator
+`apps/pipeline/src/learnings/validate.ts`, and held to the contract by the
+field-name guard — but **no `Learning` record has been observed**.
+
+Closing this gap is **[#34](https://github.com/arcadeai-labs/aio/issues/34)**,
+which extends the seed corpus to exercise these fields. It is blocked on this PR
+so that it is measured against a corrected document. Until it lands, a † row is
+the document telling you it has not been watched working.
+
+Fields that reach **no column at all** are a different thing again, marked
+`**—**` in the DB column and listed in full under
+[not ingested](#not-ingested). Those are verified: the absence is the fact.
+
+### Optional in the contract, always present in the corpus
+
+The trap above runs the other way too. Three fields are declared optional in
+TypeScript and are populated on **every** row the seed corpus produces, so code
+written and validated against seeded data can omit a null check that a real run
+will eventually need:
+
+| Field | Type | Seeded coverage | Why it is not a guarantee |
+|-------|------|-----------------|---------------------------|
+| `UnifiedResult.promptCategory` | `string?` | 1,440 / 1,440 | A prompts CSV with no `category` **and** no `theme_name` column yields `undefined` |
+| `UnifiedResult.promptMeta` | `Record<string,string>?` | 1,440 / 1,440 | `undefined` when the CSV has no columns beyond `prompt` — the shipped CSV always has `topic` and `brandedType` |
+| `SearchResult.score` | `number?` | 5,558 / 5,558 | Only set when the provider returns a relevance score; the seed generator always emits one |
+
+The genuinely optional pair behaves as documented: `tokenUsage.inputTokens` and
+`outputTokens` are present on 1,424 of 1,440 results — absent on exactly the 16
+errored rows, which carry `tokenUsage: {}`.
+
+---
+
 ## Result (`results-YYYY-MM-DD.jsonl`)
 
 One line per (prompt x provider x model) run. Defined in
@@ -65,17 +135,41 @@ tables.
 
 `promptCategory` holds the **theme** ("Feature & Capability", "Purchase &
 Pricing"). The branded/unbranded classification lives in
-`promptMeta.brandedType`. The resolution rule is in
-`apps/pipeline/src/load.ts`:
+`promptMeta.brandedType`. The theme does **not** come from a CSV column named
+`topic`.
 
-- CSV has a `theme_name` column → `promptCategory = theme_name`, and the CSV's
-  `category` column is moved into `promptMeta.brandedType`.
-- CSV has no `theme_name` (this is the shipped `prompts/default.csv`) →
-  `promptCategory = category`, and `brandedType` passes through as its own CSV
-  column.
+The resolution rule is one line of `apps/pipeline/src/load.ts`
+(`effectiveCategory = theme_name || category`), and it straddles two CSV
+dialects:
+
+| | legacy dialect | shipped `prompts/default.csv` |
+|---|---|---|
+| columns | `prompt, category, theme_name, …` | `prompt, category, topic, brandedType` |
+| theme (`promptCategory`) | `theme_name` | **`category`** |
+| `branded_type` | `category`, moved to `promptMeta.brandedType` | `brandedType`, carried through as meta |
+| `topic` | — | a sub-topic, **not** the theme; kept in `promptMeta` and dropped at ingest |
 
 Either way the canonical DB names are `theme` and `branded_type`, so a query
-never has to know which CSV layout produced the run. See DESIGN.md §6.
+never has to know which CSV layout produced the run.
+
+Confirmed against a real ingested row — the shipped CSV line
+`category="Brand Understanding", topic="Product Overview",
+brandedType="Branded"` arrives as:
+
+```
+prompt           | What is Taskwell and who is it for?
+run_theme        | Brand Understanding      <- the CSV's category
+run_branded_type | branded                  <- the CSV's brandedType, lowercased
+```
+
+and `topic` reaches no column at all. Across the whole seeded corpus the
+distinct `results.run_theme` set is exactly the CSV's five `category` values and
+shares no value with the eleven `topic` values, so the two cannot be confused by
+accident.
+
+`DESIGN.md` §6 previously described only the legacy dialect and was corrected to
+match the loader on 2026-09-16 (issue #11). **The code is authoritative**; §6 and
+this section are now the same statement, and the table above is copied from it.
 
 #### `promptMeta`
 
@@ -86,8 +180,8 @@ ingest. Every other key — including `topic` in the shipped
 | Key | DB column | Notes |
 |-----|-----------|-------|
 | `brandedType` | `results.run_branded_type`, `prompts.branded_type` | Lowercased; anything other than `branded`/`unbranded` becomes `NULL` |
-| `location` | `prompts.location` | |
-| `labels` | `prompt_labels.label` | Comma-separated string, split and de-duped. Modeled, not surfaced in v1 |
+| `location` | `prompts.location` | **†** not exercised by the seeded corpus (0 / 16) — the shipped CSV has no `location` column |
+| `labels` | `prompt_labels.label` | Comma-separated string, split and de-duped. Modeled, not surfaced in v1. **†** not exercised by the seeded corpus (0 rows) |
 | *(anything else)* | **—** | |
 
 ### `SearchQuery`
@@ -109,7 +203,7 @@ Ingested into `search_results`, one row per element.
 | `title` | `string` | `search_results.title` | Page title (column is nullable) |
 | `snippet` | `string` | `search_results.snippet` | Snippet / summary text (column is nullable) |
 | `score` | `number?` | `search_results.score` | Relevance score (when the provider returns one) |
-| `pageDate` | `string?` | `search_results.page_date` | Publication date of the page. Only `exa` and `anthropic` populate it |
+| `pageDate` | `string?` | `search_results.page_date` | Publication date of the page. Only `exa` and `anthropic` populate it. **†** not exercised by the seeded corpus (0 / 5,558) |
 
 ### `Citation`
 
@@ -120,8 +214,8 @@ Ingested into `citations`, one row per element.
 | `url` | `string` | `citations.url` | Cited URL |
 | `title` | `string` | `citations.title` | Title of the cited page (column is nullable) |
 | `citedText` | `string` | `citations.cited_text` | The passage from the response that references this URL (column is nullable) |
-| `startIndex` | `number?` | `citations.start_index` | Character offset where the citation starts in `responseText`. Only `openai` and `openrouter` populate it |
-| `endIndex` | `number?` | `citations.end_index` | Character offset where the citation ends in `responseText`. Same providers as above |
+| `startIndex` | `number?` | `citations.start_index` | Character offset where the citation starts in `responseText`. Only `openai` and `openrouter` populate it. **†** not exercised by the seeded corpus (0 / 3,571) |
+| `endIndex` | `number?` | `citations.end_index` | Character offset where the citation ends in `responseText`. Same providers as above. **†** not exercised by the seeded corpus (0 / 3,571) |
 
 ### `RunMetadata`
 
@@ -129,14 +223,14 @@ Flattened onto the `results` row.
 
 | Field | Type | DB column | Description |
 |-------|------|-----------|-------------|
-| `provider` | `string` | `results.provider` | Provider key (openai, anthropic, anthropic-agent, openrouter, perplexity, exa) |
+| `provider` | `string` | `results.provider` | Provider key. The **default target matrix** (`apps/pipeline/src/targets.ts`) ships six: `openai`, `anthropic`, `anthropic-agent`, `openrouter`, `perplexity`, `exa`. The registry (`providers/registry.ts`) has a seventh, `codex`, which is **not** in the default matrix and only runs via `TARGETS_FILE` — so the column is not limited to the six |
 | `model` | `string` | `results.model` | Model identifier **as recorded**, which is not always the configured label: `exa` records `exa+<synthesisModel>` |
 | `searchTool` | `string` | `results.search_tool` | Name of the search tool / method |
 | `startedAt` | `string` | `results.started_at` | ISO-8601 start time |
 | `completedAt` | `string` | `results.completed_at` | ISO-8601 completion time |
 | `latencyMs` | `number` | `results.latency_ms` | Wall-clock time in milliseconds |
 | `tokenUsage` | `TokenUsage` | see below | Token counts for the run |
-| `estimatedCostUsd` | `number?` | `results.estimated_cost_usd` | Estimated API cost in USD. **Only `anthropic-agent` populates it** — `NULL` for the other five providers |
+| `estimatedCostUsd` | `number?` | `results.estimated_cost_usd` | Estimated API cost in USD. **Only `anthropic-agent` populates it** — `NULL` for the other five providers. **†** not exercised by the seeded corpus (0 / 1,440) |
 | `runId` | `string` | **—** | UUID for the overall run batch. One per dated file; the DB keys runs by `run_date` instead |
 | `providerMeta` | `Record<string, unknown>?` | **—** | Provider-specific metadata |
 
@@ -205,13 +299,30 @@ A run's `analysis-*.jsonl` therefore has **fewer** lines than its
 | `descriptionAccuracy` | `DescriptionAccuracy \| null` | see below | How accurately the brand was described (null when not mentioned) |
 | `ownedCitation` | `OwnedCitation` | see below | Was an owned domain linked in the response? |
 | `competitivePosition` | `CompetitivePosition` | see below | Where the brand ranked vs. competitors |
-| `mentionHypothesis` | `string \| null` | `verdicts.mention_hypothesis` | LLM-generated hypothesis explaining why the brand was or wasn't mentioned |
+| `mentionHypothesis` | `string \| null` | `verdicts.mention_hypothesis` | Judge's hypothesis for why the brand was or wasn't mentioned. **The seeded corpus populates this inversely to the real judge** — see below |
 | `analyzedAt` | `string` | `verdicts.analyzed_at` | ISO-8601 time the verdict was produced. Also the dedupe key: re-judging a result within a run keeps the **latest** verdict |
 | `judgeModel` | `string` | `verdicts.judge_model` | Model used as the LLM judge |
 | `judgeTokens` | `JudgeTokens` | `verdicts.judge_input_tokens`, `judge_output_tokens` | Token usage for the judge call |
 
 A verdict whose `resultId` has no matching result in the same run is **dropped**
 at ingest and counted in `ingest_runs.orphan_verdict_count` (DESIGN.md §5).
+
+#### `mentionHypothesis` reads backwards on seeded data
+
+Do not calibrate a query for this field against `bun run seed` output. The two
+producers disagree:
+
+| Producer | When `mentioned` is true | When `mentioned` is false |
+|---|---|---|
+| Real judge (`apps/pipeline/src/analytics/judge-prompt.ts`) | hypothesis for **why it was** mentioned | hypothesis for why it was omitted |
+| Seed generator (`apps/pipeline/src/seed/scenario.ts`) | **always `null`** | an absence hypothesis |
+
+So on the shipped corpus `mention_hypothesis IS NOT NULL` selects exactly the
+**unmentioned** verdicts (885 non-null of 885 unmentioned; 0 of 539 mentioned),
+while against a real judged run the same predicate selects nearly everything.
+The contract permits both — nothing enforces a relationship to `mentioned` — so
+this is a property of whichever corpus you are looking at, not a rule. Filter on
+`mentioned` when you mean `mentioned`.
 
 ### `BrandMention`
 
@@ -234,6 +345,13 @@ How faithfully the response described the brand, compared to
 `brand.groundTruthDescription` in the config. Populated **exactly when**
 `brandMention.mentioned` is true, and `null` otherwise — so
 `accuracy_score IS NOT NULL` and `mentioned` are interchangeable filters.
+
+That coupling holds across all 1,424 seeded verdicts (539 mentioned, 539 scored;
+885 unmentioned, 0 scored), and the judge is instructed to maintain it
+("If the brand is NOT mentioned, set descriptionAccuracy to null",
+`judge-prompt.ts`). It is **not structurally enforced**: the judge's JSON schema
+would accept a score on an unmentioned brand, and nothing at ingest rejects one.
+Rely on it for reading, not for invariants you cannot afford to have violated.
 
 | Field | Type | DB column | Description |
 |-------|------|-----------|-------------|
@@ -383,3 +501,29 @@ One JSON object per generator per run, written by `bun run learnings` into
 | `value` | `string \| number` | Raw scalar from the source, kept verbatim so the reader re-derives nothing |
 | `delta` | `string \| number?` | Change versus the previous run, when the datum has one |
 | `source` | `string` | Where the datum came from, e.g. `comparison-2026-06-22.json` |
+
+---
+
+## Not ingested
+
+Every field that exists in a shipped contract and reaches **no column**. These
+are marked `**—**` at their row; this is the same list in one place, because a
+field name read off a JSONL line gives a querier no way to discover there is
+nothing behind it. The absence is verified against
+`packages/db/src/schema/analytics.ts` and guarded by `test/schema-doc.test.ts`.
+
+| Field | In | Why there is no column |
+|-------|----|------------------------|
+| `rawSearchCalls` | `UnifiedResult` | Verbatim provider payloads; deliberately not stored in v1. `results.raw_ref` is a reserved, always-`NULL` hook for a future lazy-load and does **not** point at these |
+| `metadata.runId` | `RunMetadata` | A run is keyed by `run_date`, parsed from the filename. One `runId` per dated file, none in the DB |
+| `metadata.providerMeta` | `RunMetadata` | Provider-specific bag with no fixed shape |
+| `tokenUsage.searchRequests` | `TokenUsage` | Only some providers track it separately |
+| `error.retryable` | `RunError` | The retry decision is a runtime concern; only the outcome is stored |
+| `error.retriesAttempted` | `RunError` | Same |
+| `promptCategory` | `ResultVerdict` | Repeated from the result. The theme is read off `results.run_theme`, which is the one that is ingested |
+| `mentioned` | `CompetitorEntry` | Used as the **storage filter**: only `mentioned: true` entries become `competitor_mentions` rows, so absence of a row is how "not mentioned" is represented |
+| any `promptMeta` key outside `brandedType` / `location` / `labels` | `UnifiedResult` | Dropped at ingest — including `topic`, which the shipped CSV sets on every row |
+
+Whole records with no table in v1: `WeekComparison` (the dashboard recomputes
+deltas live in SQL, because an old run can be re-judged retroactively) and
+`Learning` (no table in v1). Both are documented above from their contracts.

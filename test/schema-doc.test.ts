@@ -19,17 +19,28 @@ const ROOT = resolve(import.meta.dir, "..");
 const doc = await readFile(resolve(ROOT, "SCHEMA.md"), "utf-8");
 
 /**
- * Field names from the `### <Type>` table in SCHEMA.md. Rows are
- * `| \`field\` | ... |`; the leading backticked cell is the field name, and a
- * trailing `?` marks optionality the same way the TypeScript source does.
+ * The body of a `### <Type>` section: everything from the heading to the next
+ * heading of any level. Scoping by section is what makes the not-ingested guard
+ * below trustworthy — `promptCategory` and `mentioned` each appear in two
+ * tables with *different* answers (one ingested, one not), so a document-wide
+ * search for either would silently check the wrong row.
  */
-function documentedFields(typeName: string): Set<string> {
+function sectionFor(typeName: string): string {
   const heading = `### \`${typeName}\``;
   const start = doc.indexOf(heading);
   if (start === -1) throw new Error(`SCHEMA.md has no section ${heading}`);
   const rest = doc.slice(start + heading.length);
   const end = rest.search(/^#{1,4} /m);
-  const section = end === -1 ? rest : rest.slice(0, end);
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+/**
+ * Field names from the `### <Type>` table in SCHEMA.md. Rows are
+ * `| \`field\` | ... |`; the leading backticked cell is the field name, and a
+ * trailing `?` marks optionality the same way the TypeScript source does.
+ */
+function documentedFields(typeName: string): Set<string> {
+  const section = sectionFor(typeName);
 
   const fields = new Set<string>();
   for (const line of section.split("\n")) {
@@ -41,7 +52,8 @@ function documentedFields(typeName: string): Set<string> {
     if (!name || !type?.startsWith("`")) continue;
     fields.add(`${name[1]}${type.endsWith("?`") ? "?" : ""}`);
   }
-  if (fields.size === 0) throw new Error(`no field rows under ${heading}`);
+  if (fields.size === 0)
+    throw new Error(`no field rows under ### \`${typeName}\``);
   return fields;
 }
 
@@ -123,23 +135,124 @@ describe("SCHEMA.md states the ingest seam", () => {
     expect(missing).toEqual([]);
   });
 
-  test("marks the fields that reach no column as not ingested", () => {
-    // Each of these exists in a shipped contract and has no destination in
-    // packages/db/src/schema/analytics.ts. A doc row that quietly gains a
-    // column name here would be promising a query that cannot be written.
-    for (const field of [
-      "rawSearchCalls",
-      "runId",
-      "providerMeta",
-      "searchRequests",
-      "retryable",
-      "retriesAttempted",
-    ]) {
-      const row = doc
+  // Every field that exists in a shipped contract and has no destination in
+  // packages/db/src/schema/analytics.ts, paired with the type whose table it
+  // belongs to. A doc row that quietly gained a column name here would be
+  // promising a query that cannot be written.
+  //
+  // The type is not decoration: `promptCategory` is ingested on `UnifiedResult`
+  // (results.run_theme) and *not* ingested on `ResultVerdict`, and `mentioned`
+  // is ingested on `BrandMention` (verdicts.mentioned) and *not* on
+  // `CompetitorEntry`. A document-wide search for either name finds the
+  // ingested row first and passes while the un-ingested one rots.
+  const NOT_INGESTED: [type: string, field: string][] = [
+    ["UnifiedResult", "rawSearchCalls"],
+    ["RunMetadata", "runId"],
+    ["RunMetadata", "providerMeta"],
+    ["TokenUsage", "searchRequests"],
+    ["RunError", "retryable"],
+    ["RunError", "retriesAttempted"],
+    ["ResultVerdict", "promptCategory"],
+    ["CompetitorEntry", "mentioned"],
+  ];
+
+  for (const [type, field] of NOT_INGESTED) {
+    test(`marks ${type}.${field} as reaching no column`, () => {
+      const row = sectionFor(type)
         .split("\n")
         .find((l) => l.startsWith(`| \`${field}\``));
       expect(row).toBeDefined();
       expect(row).toContain("**—**");
+    });
+  }
+
+  test("the same fields are ingested where they do have a column", () => {
+    // The mirror of the guard above: if these ever became `**—**`, the pairs in
+    // NOT_INGESTED would stop distinguishing anything and the section scoping
+    // would be silently pointless.
+    const ingested: [string, string, string][] = [
+      ["UnifiedResult", "promptCategory", "results.run_theme"],
+      ["BrandMention", "mentioned", "verdicts.mentioned"],
+    ];
+    for (const [type, field, column] of ingested) {
+      const row = sectionFor(type)
+        .split("\n")
+        .find((l) => l.startsWith(`| \`${field}\``));
+      expect(row).toBeDefined();
+      expect(row).toContain(column);
+      expect(row).not.toContain("**—**");
     }
+  });
+});
+
+/**
+ * The document's own statement about what it has and has not seen working.
+ *
+ * AC2 for issue #11 asked for every documented field to be confirmed against a
+ * real ingested row. Six optional fields and the two `Learning` contracts
+ * cannot be, because the credential-free seed corpus never produces them.
+ * Rather than quietly document them as if they had been observed, SCHEMA.md
+ * marks them † and says so. #34 extends the corpus to close the gap.
+ *
+ * These tests exist so that boundary cannot be erased by accident. If #34 (or
+ * anything else) makes a field real, the fix is to delete its † row here and in
+ * SCHEMA.md in the same change — a failure below means the document is now
+ * claiming less, or more, than the corpus actually demonstrates.
+ */
+describe("SCHEMA.md is honest about what it has verified", () => {
+  const VERIFICATION_HEADING =
+    "## How much of this document is confirmed against data";
+
+  test("carries the verification-status section", () => {
+    expect(doc).toContain(VERIFICATION_HEADING);
+  });
+
+  test("points at the issue that closes the gap", () => {
+    expect(doc).toContain("/issues/34");
+  });
+
+  // (type, field) pairs the seeded corpus does not populate. The row must both
+  // name a real DB column — these are ingestable, just never exercised — and
+  // carry the † marker that sends the reader to the verification section.
+  const UNEXERCISED: [type: string, field: string, column: string][] = [
+    ["RunMetadata", "estimatedCostUsd", "results.estimated_cost_usd"],
+    ["SearchResult", "pageDate", "search_results.page_date"],
+    ["Citation", "startIndex", "citations.start_index"],
+    ["Citation", "endIndex", "citations.end_index"],
+  ];
+
+  for (const [type, field, column] of UNEXERCISED) {
+    test(`${type}.${field} is marked as not exercised by the corpus`, () => {
+      const row = sectionFor(type)
+        .split("\n")
+        .find((l) => l.startsWith(`| \`${field}\``));
+      expect(row).toBeDefined();
+      expect(row).toContain(column);
+      expect(row).toContain("†");
+    });
+  }
+
+  // promptMeta's two unexercised keys live in their own table, keyed by CSV key
+  // rather than by contract field, so they are checked by section name.
+  for (const key of ["location", "labels"]) {
+    test(`promptMeta.${key} is marked as not exercised by the corpus`, () => {
+      const start = doc.indexOf("#### `promptMeta`");
+      expect(start).toBeGreaterThan(-1);
+      const rest = doc.slice(start + "#### `promptMeta`".length);
+      const end = rest.search(/^#{1,4} /m);
+      const section = end === -1 ? rest : rest.slice(0, end);
+      const row = section
+        .split("\n")
+        .find((l) => l.startsWith(`| \`${key}\``));
+      expect(row).toBeDefined();
+      expect(row).toContain("†");
+    });
+  }
+
+  test("says plainly that no Learning record has been observed", () => {
+    const start = doc.indexOf(VERIFICATION_HEADING);
+    const section = doc.slice(start, doc.indexOf("\n## ", start + 1));
+    expect(section).toContain("Learning");
+    expect(section).toContain("no `Learning` record has been observed");
   });
 });
