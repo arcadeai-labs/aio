@@ -85,6 +85,12 @@ describe("weekly-run.yml", () => {
     expect(stepIndex("Preflight")).toBeLessThan(stepIndex("Run web search"));
   });
 
+  test("inspects the results before uploading them", () => {
+    expect(stepIndex("Results are usable")).toBeLessThan(
+      stepIndex("Upload results"),
+    );
+  });
+
   test("pins Bun rather than tracking latest", () => {
     const setup = steps.find((s) => s.uses?.startsWith("oven-sh/setup-bun"));
     expect(setup).toBeDefined();
@@ -120,7 +126,9 @@ describe("preflight guard", () => {
     const r = await runStep("Preflight", { ANTHROPIC_API_KEY: "sk-test" });
     expect(r.exitCode).toBe(0);
     expect(r.output).toContain("provider keys present: ANTHROPIC_API_KEY");
-    expect(r.output).toContain("::warning title=Some provider keys are missing::");
+    expect(r.output).toContain(
+      "::warning title=Some provider keys are missing::",
+    );
     expect(r.output).toContain("OPENAI_API_KEY");
   });
 
@@ -137,17 +145,29 @@ describe("preflight guard", () => {
   });
 });
 
-describe("empty-success guard", () => {
-  async function inDir(files: Record<string, string>) {
+/**
+ * The guard these tests cover is the slice's own thesis pointed at itself: it
+ * exists to stop a scheduled run uploading a plausible-but-unusable artefact,
+ * and round 1 shipped a version that counted lines — which passes an empty file
+ * and passes a file of nothing but 401s, since an all-error run writes exactly
+ * as many rows as a good one. Every case below is a file that a line count
+ * would have waved through.
+ */
+describe("usable-results guard", () => {
+  async function withResults(rows: Record<string, string>) {
     const dir = `${process.env.TMPDIR ?? "/tmp"}/aio-weekly-${crypto.randomUUID()}`;
-    for (const [name, body] of Object.entries(files)) {
+    await Bun.write(`${dir}/.keep`, "");
+    for (const [name, body] of Object.entries(rows)) {
       await Bun.write(`${dir}/${name}`, body);
     }
-    await Bun.write(`${dir}/.keep`, "");
-    const script = steps[stepIndex("Results were actually written")].run;
-    const proc = Bun.spawn(["bash", "-c", script as string], {
-      cwd: dir,
-      env: { PATH: process.env.PATH ?? "" },
+    const script = steps[stepIndex("Results are usable")].run;
+    if (!script) throw new Error("guard step has no run block");
+    // cwd is the repo, because the step runs `bun run scripts/check-results.ts`
+    // by its real path; OUTPUT_DIR is the same variable the pipeline writes to,
+    // so the guard reads wherever the run actually wrote.
+    const proc = Bun.spawn(["bash", "-c", script], {
+      cwd: resolve(import.meta.dir, ".."),
+      env: { PATH: process.env.PATH ?? "", OUTPUT_DIR: dir },
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -159,17 +179,84 @@ describe("empty-success guard", () => {
     return { output: stdout + stderr, exitCode };
   }
 
+  const ok = (text: string) =>
+    `${JSON.stringify({ error: null, responseText: text })}\n`;
+  const errored = `${JSON.stringify({
+    error: { code: "auth", message: '401 Incorrect API key provided: ""' },
+    responseText: "",
+  })}\n`;
+
   test("fails when the pipeline exited 0 having written nothing", async () => {
-    const r = await inDir({ "results/.gitkeep": "" });
+    const r = await withResults({});
     expect(r.exitCode).toBe(1);
     expect(r.output).toContain("::error title=No results file::");
   });
 
-  test("passes and reports the row count when results exist", async () => {
-    const r = await inDir({
-      "results/results-2026-09-14.jsonl": '{"a":1}\n{"a":2}\n{"a":3}\n',
+  test("fails on a file with zero rows", async () => {
+    // A line count returns 0 here and the round-1 guard passed it.
+    const r = await withResults({ "results-2026-09-14.jsonl": "" });
+    expect(r.exitCode).toBe(1);
+    expect(r.output).toContain("::error title=Results file is empty::");
+  });
+
+  test("fails when every row carries a provider error", async () => {
+    // The measured shape of a run with blank keys: exits 0, full-size file,
+    // every row a 401. Six rows, six errors, zero clean.
+    const r = await withResults({
+      "results-2026-09-14.jsonl": errored.repeat(6),
+    });
+    expect(r.exitCode).toBe(1);
+    expect(r.output).toContain("::error title=No usable results::");
+    expect(r.output).toContain("6 carry a provider error");
+  });
+
+  test("fails when rows report no error but carry no response text", async () => {
+    // error: null is not the same as usable — an empty response has nothing
+    // for the judge to score and reaches the dashboard as a confident zero.
+    const r = await withResults({
+      "results-2026-09-14.jsonl": ok("").repeat(3),
+    });
+    expect(r.exitCode).toBe(1);
+    expect(r.output).toContain("::error title=No usable results::");
+    expect(r.output).toContain("3 have no response text");
+  });
+
+  test("fails when the file is not parseable as JSONL", async () => {
+    const r = await withResults({
+      "results-2026-09-14.jsonl": "not json\nalso not json\n",
+    });
+    expect(r.exitCode).toBe(1);
+    expect(r.output).toContain("::error title=No usable results::");
+  });
+
+  test("passes a partial run, and says how partial it was", async () => {
+    // A single-provider configuration is legitimate — Preflight already warns
+    // about it — so one good row among errors must not fail the run.
+    const r = await withResults({
+      "results-2026-09-14.jsonl":
+        ok("Taskwell is a to-do app.") + errored.repeat(5),
     });
     expect(r.exitCode).toBe(0);
-    expect(r.output).toContain("results/results-2026-09-14.jsonl: 3 rows");
+    expect(r.output).toContain("::warning title=Some results are unusable::");
+    expect(r.output).toContain("1 of 6 rows are usable");
+    expect(r.output).toContain("ok: 1 of 6 rows usable");
+  });
+
+  test("passes a clean run without warning about it", async () => {
+    const r = await withResults({
+      "results-2026-09-14.jsonl": ok("one") + ok("two") + ok("three"),
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.output).not.toContain("::warning");
+    expect(r.output).toContain("3 rows, 3 usable, 0 errored, 0 unreadable");
+  });
+
+  test("counts every results file the run left behind", async () => {
+    const r = await withResults({
+      "results-2026-09-14.jsonl": errored,
+      "results-2026-09-15.jsonl": ok("something"),
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.output).toContain("ok: 1 of 2 rows usable");
   });
 });

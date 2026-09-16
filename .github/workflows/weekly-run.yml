@@ -123,21 +123,13 @@ jobs:
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
         run: bun run start
 
-      # `bun run start` exiting 0 is not proof it wrote anything. An empty
-      # artefact uploads silently and only surfaces a quarter later, when
-      # someone goes looking for the week that is missing from the dashboard.
-      - name: Results were actually written
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          files=(results/results-*.jsonl)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "::error title=No results file::bun run start exited 0 but wrote no results/results-*.jsonl."
-            exit 1
-          fi
-          for f in "${files[@]}"; do
-            echo "$f: $(wc -l < "$f" | tr -d ' ') rows"
-          done
+      # `bun run start` exiting 0 is not proof it captured anything. With every
+      # key blank it still logs "Run complete", still exits 0, and still writes
+      # a full-size file in which every row is a 401 — measured, not assumed.
+      # Counting rows would pass that file, so the guard counts what the rows
+      # are. See scripts/check-results.ts for the bar and why it is set there.
+      - name: Results are usable, not just present
+        run: bun run scripts/check-results.ts
 
       - name: Upload results
         uses: actions/upload-artifact@v4
