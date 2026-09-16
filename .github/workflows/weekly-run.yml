@@ -1,3 +1,60 @@
+# Weekly brand-presence run — THIS STOPS AFTER THE PIPELINE, ON PURPOSE.
+#
+# ── What it does ────────────────────────────────────────────────────────────
+# Every Monday 09:00 UTC (and on demand) it runs `bun run start`: every prompt
+# in prompts/default.csv against every default provider target, captured as
+# results/results-<date>.jsonl and uploaded as a build artefact.
+#
+# ── Where it stops, and why ─────────────────────────────────────────────────
+# It does NOT judge (`bun run analyze`) and does NOT load the dashboard
+# (`bun run ingest`). Both need state that only exists on the operator's
+# machine, and faking that state in CI is worse than stopping here.
+#
+#   analyze  reads analytics.config.json — your brand, aliases, owned domains
+#            and competitors. That file is gitignored by design (DESIGN.md §13:
+#            "Brand is configuration, never a constant"), so CI has no copy.
+#            Every way of giving it one is worse than not judging in CI:
+#            committing a config makes every fork judge against someone else's
+#            brand; shipping the demo config judges your results against
+#            Todoist; pasting the config into a repository secret turns an
+#            edited-often, non-secret file into a credential whose drift from
+#            the laptop copy is invisible. That last one is this project's
+#            characteristic bug: a config whose brand.name no longer matches
+#            scores every answer "not mentioned" and draws a clean, believable
+#            0% that is indistinguishable from a real zero.
+#
+#   ingest   needs a Postgres this runner can reach. DESIGN.md §3 fixes
+#            ingestion as a laptop-driven CLI writing to a local database, and
+#            §13 ("Hosting is local") says a fork must not need an account on a
+#            hosting platform to see the thing run. A CI-reachable database is
+#            a different product, not a missing step.
+#
+# So this workflow is the expensive, time-boxed, credential-holding half of the
+# chain — the part worth automating. The cheap local half stays local.
+#
+# ── What the operator does next ─────────────────────────────────────────────
+# After a green run, on the machine that holds analytics.config.json:
+#
+#   gh run download <run-id> -n results-<run-id> -D results/
+#   bun run analyze            # needs OPENAI_API_KEY + analytics.config.json
+#   docker compose up -d db
+#   bun run ingest             # needs DATABASE_URL
+#
+# The same three lines are printed in each run's job summary with the real
+# run id substituted in.
+#
+# ── Opt-in, and loud when it is not opted into ──────────────────────────────
+# With no provider-key secrets configured this workflow still parses and still
+# starts — and then fails in the first 30 seconds at "Preflight", rather than
+# spending half an hour writing a file in which every row is an error and
+# calling that a success. A scheduled job that quietly writes nothing every
+# Monday is not noticed for a quarter.
+#
+# Note on scope: the preflight below only checks that keys are PRESENT. Making
+# a per-provider failure during the run visible in the run summary (rather than
+# only in a per-result field) is issue #9's, and belongs in the pipeline, not
+# here.
+
 name: Weekly Web Search Test
 
 on:
@@ -15,10 +72,47 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          # Pinned to the version CI and the Dockerfile run, so a Bun release
+          # cannot break the Monday job while every other check stays green.
+          bun-version: 1.3.14
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      # Fails the run before a single provider call when no key is configured.
+      # Deliberately plain bash reading plain env vars: no ${{ }} inside the
+      # script body, so test/weekly-run-workflow.test.ts can lift this exact
+      # block out of the YAML and run it.
+      - name: Preflight — at least one provider key must be configured
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          present=""
+          missing=""
+          for key in OPENAI_API_KEY ANTHROPIC_API_KEY OPENROUTER_API_KEY \
+                     PERPLEXITY_API_KEY EXA_API_KEY; do
+            if [ -n "${!key:-}" ]; then
+              present="$present $key"
+            else
+              missing="$missing $key"
+            fi
+          done
+
+          if [ -z "$present" ]; then
+            echo "::error title=No provider keys configured::Every default target would fail and this run would upload a results file containing nothing but errors. Add at least one of${missing} as a repository secret (Settings → Secrets and variables → Actions), or disable this workflow."
+            exit 1
+          fi
+
+          echo "provider keys present:${present}"
+          if [ -n "$missing" ]; then
+            echo "::warning title=Some provider keys are missing::No secret set for${missing}. Those providers will error on every prompt and their rows will be excluded from the analysis denominators. This is fine if it is deliberate."
+          fi
 
       - name: Run web search tests
         env:
@@ -29,9 +123,45 @@ jobs:
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
         run: bun run start
 
+      # `bun run start` exiting 0 is not proof it wrote anything. An empty
+      # artefact uploads silently and only surfaces a quarter later, when
+      # someone goes looking for the week that is missing from the dashboard.
+      - name: Results were actually written
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(results/results-*.jsonl)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error title=No results file::bun run start exited 0 but wrote no results/results-*.jsonl."
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            echo "$f: $(wc -l < "$f" | tr -d ' ') rows"
+          done
+
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
           name: results-${{ github.run_id }}
           path: results/
           retention-days: 90
+
+      # The chain stops here, so the handover is part of the output rather than
+      # something a reader has to reconstruct from the README.
+      - name: Say what the operator does next
+        if: success()
+        run: |
+          {
+            echo "### Pipeline done — the chain stops here"
+            echo
+            echo "This workflow captures provider answers only. Judging and ingest run on the machine that holds \`analytics.config.json\`:"
+            echo
+            echo '```bash'
+            echo "gh run download ${{ github.run_id }} -n results-${{ github.run_id }} -D results/"
+            echo "bun run analyze      # needs OPENAI_API_KEY + analytics.config.json"
+            echo "docker compose up -d db"
+            echo "bun run ingest       # needs DATABASE_URL"
+            echo '```'
+            echo
+            echo "Why it stops: \`analyze\` needs the gitignored brand config and \`ingest\` needs a database this runner cannot reach. See the comment at the top of \`.github/workflows/weekly-run.yml\`."
+          } >> "$GITHUB_STEP_SUMMARY"
