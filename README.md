@@ -82,7 +82,7 @@ could have worked returned nothing:
 ────────────────────────────────────────────────────────────────────────
 RUN SUMMARY
 ────────────────────────────────────────────────────────────────────────
-  OK             openai/gpt-5.2                 16/16 ok
+  OK             openai/gpt-5.6-terra           16/16 ok
   FAILED         anthropic/claude-sonnet-5       0/16 ok      HTTP_404×16
   NO CREDENTIALS perplexity/sonar-pro            0/16 ok      HTTP_401×16
 ────────────────────────────────────────────────────────────────────────
@@ -136,7 +136,7 @@ something that maintains itself. To customize, write a JSON file and pass
   {
     "provider": "exa",
     "model": "exa-auto",
-    "options": { "synthesisProvider": "openai", "synthesisModel": "gpt-5.4-mini" }
+    "options": { "synthesisProvider": "openai", "synthesisModel": "gpt-5.6-luna" }
   }
 ]
 ```

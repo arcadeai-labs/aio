@@ -11,10 +11,13 @@ import { BaseProvider } from "./base.js";
 export class OpenRouterProvider extends BaseProvider {
   readonly name = "openrouter";
   readonly displayName = "OpenRouter";
+  // Checked against https://openrouter.ai/api/v1/models on 2026-09-16. Note
+  // OpenRouter's Anthropic ids use dots, not dashes — the previous
+  // "anthropic/claude-sonnet-4-6:online" entry was never a routable id.
   readonly supportedModels = [
-    "openai/gpt-5.2:online",
-    "anthropic/claude-sonnet-4-6:online",
-    "google/gemini-2.5-pro-preview:online",
+    "openai/gpt-5.6-terra:online",
+    "anthropic/claude-sonnet-5:online",
+    "google/gemini-3.1-pro-preview:online",
   ];
 
   private _client?: OpenAI;

@@ -44,7 +44,7 @@ describe("DEFAULT_TARGETS", () => {
     expect(exa).toBeDefined();
     expect(exa?.options).toEqual({
       synthesisProvider: "openai",
-      synthesisModel: "gpt-5.4-mini",
+      synthesisModel: "gpt-5.6-luna",
     });
   });
 

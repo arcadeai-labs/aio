@@ -12,10 +12,13 @@ import type { TargetEntry } from "./types/config.js";
  * Every id below was checked against the provider's own current documentation
  * or live model list on that date. Sources and what changed:
  *
- *   openai           gpt-5.2 — unchanged here; still in OpenAI's catalog and
- *                    absent from the deprecations page, so the provider does
- *                    serve it. It is two generations behind the current lineup
- *                    (gpt-6-astra / gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna).
+ *   openai           gpt-5.2 → gpt-5.6-terra
+ *                    gpt-5.2 is still in OpenAI's catalog and is not on the
+ *                    deprecations page, but the current lineup is
+ *                    gpt-6-astra / gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna.
+ *                    terra is the "balanced intelligence and cost" tier and
+ *                    lists the Responses API and web search among its
+ *                    supported surfaces.
  *
  *   anthropic        claude-sonnet-4-6 → claude-sonnet-5
  *   anthropic-agent  Anthropic's models overview lists the current lineup as
@@ -24,13 +27,12 @@ import type { TargetEntry } from "./types/config.js";
  *                    "Legacy models (still available)". Sonnet 5 is the direct
  *                    current equivalent of the tier that was pinned.
  *
- *   openrouter       openai/gpt-5.2:online — unchanged here, and deliberately
- *                    kept in lockstep with the `openai` row: the two rows exist
- *                    to compare the same model through OpenAI's own web search
- *                    and through OpenRouter's `:online` plugin, which only means
- *                    something if the model matches. `openai/gpt-5.2` was
- *                    confirmed present in https://openrouter.ai/api/v1/models,
- *                    and the `:online` suffix is still documented.
+ *   openrouter       openai/gpt-5.2:online → openai/gpt-5.6-terra:online
+ *                    Kept in lockstep with the `openai` row on purpose: the two
+ *                    rows exist to compare the same model through OpenAI's own
+ *                    web search and through OpenRouter's `:online` plugin, which
+ *                    only means something if the model matches. Both ids were
+ *                    confirmed present in https://openrouter.ai/api/v1/models.
  *
  *   perplexity       sonar-pro — unchanged, still current.
  *                    NOTE: Perplexity's docs carry "Sonar Chat Completions is
@@ -39,8 +41,10 @@ import type { TargetEntry } from "./types/config.js";
  *                    Agent API is a different request shape — moving to it is a
  *                    provider rewrite, not a model-id change. Tracked separately.
  *
- *   exa              synthesisModel gpt-5.4-mini — unchanged here; still served,
- *                    same generation caveat as the `openai` row.
+ *   exa              synthesisModel gpt-5.4-mini → gpt-5.6-luna
+ *                    Same generation bump as the `openai` row, at the
+ *                    cost-optimized tier, since synthesis is a summarization
+ *                    step over retrieved text.
  *                    `model: "exa-auto"` is a label, not a provider-served id:
  *                    Exa's search API takes no model (its mode selector is
  *                    `type: keyword|neural|auto|hybrid|fast|instant`, which this
@@ -57,15 +61,15 @@ import type { TargetEntry } from "./types/config.js";
  * but it is not free; do it deliberately and expect a gap in the trend.
  */
 export const DEFAULT_TARGETS: TargetEntry[] = [
-  { provider: "openai", model: "gpt-5.2" },
+  { provider: "openai", model: "gpt-5.6-terra" },
   { provider: "anthropic", model: "claude-sonnet-5" },
   { provider: "anthropic-agent", model: "claude-sonnet-5" },
-  { provider: "openrouter", model: "openai/gpt-5.2:online" },
+  { provider: "openrouter", model: "openai/gpt-5.6-terra:online" },
   { provider: "perplexity", model: "sonar-pro" },
   {
     provider: "exa",
     model: "exa-auto",
-    options: { synthesisProvider: "openai", synthesisModel: "gpt-5.4-mini" },
+    options: { synthesisProvider: "openai", synthesisModel: "gpt-5.6-luna" },
   },
 ];
 
