@@ -7,6 +7,7 @@ import type {
   UnifiedResult,
 } from "../types/unified-result.js";
 import { BaseProvider } from "./base.js";
+import { requireApiKey } from "./credentials.js";
 
 export class OpenRouterProvider extends BaseProvider {
   readonly name = "openrouter";
@@ -23,9 +24,13 @@ export class OpenRouterProvider extends BaseProvider {
   private _client?: OpenAI;
 
   private get client(): OpenAI {
+    // Resolve the key before the client exists. Handing the OpenAI SDK an
+    // `undefined` apiKey lets it fall back to OPENAI_API_KEY, which would point
+    // this client at OpenRouter holding OpenAI's credential — see
+    // ./credentials.ts.
     this._client ??= new OpenAI({
       baseURL: "https://openrouter.ai/api/v1",
-      apiKey: process.env.OPENROUTER_API_KEY,
+      apiKey: requireApiKey("OPENROUTER_API_KEY", "OpenRouter"),
     });
     return this._client;
   }

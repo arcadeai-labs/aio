@@ -7,6 +7,7 @@ import type {
   UnifiedResult,
 } from "../types/unified-result.js";
 import { BaseProvider } from "./base.js";
+import { requireApiKey } from "./credentials.js";
 
 interface PerplexitySearchResult {
   url: string;
@@ -46,9 +47,13 @@ export class PerplexityProvider extends BaseProvider {
   private _client?: OpenAI;
 
   private get client(): OpenAI {
+    // Resolve the key before the client exists. Handing the OpenAI SDK an
+    // `undefined` apiKey lets it fall back to OPENAI_API_KEY, which would point
+    // this client at Perplexity holding OpenAI's credential — see
+    // ./credentials.ts.
     this._client ??= new OpenAI({
       baseURL: "https://api.perplexity.ai",
-      apiKey: process.env.PERPLEXITY_API_KEY,
+      apiKey: requireApiKey("PERPLEXITY_API_KEY", "Perplexity"),
     });
     return this._client;
   }

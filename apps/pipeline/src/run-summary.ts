@@ -1,3 +1,4 @@
+import { MISSING_CREDENTIAL_CODE } from "./providers/credentials.js";
 import type { TargetEntry } from "./types/config.js";
 import type { RunError } from "./types/unified-result.js";
 import { logger } from "./util/logger.js";
@@ -83,9 +84,13 @@ const SAMPLE_ERROR_MAX_LENGTH = 200;
  *   exa-js      API key must be provided as an argument or as an environment
  *               variable (EXA_API_KEY)
  *
- * plus the HTTP codes a present-but-invalid key comes back as.
+ * plus `missing_credentials`, which this repo's own `MissingCredentialError`
+ * throws for a provider whose key has to be resolved explicitly because the SDK
+ * default would reach for another service's (see providers/credentials.ts), and
+ * the HTTP codes a present-but-invalid key comes back as.
  */
 const CREDENTIAL_ERROR_CODES = new Set([
+  MISSING_CREDENTIAL_CODE,
   "HTTP_401",
   "HTTP_403",
   "authentication_error",
@@ -281,7 +286,13 @@ export function formatRunSummary(summary: RunSummary): string {
       .map(([code, count]) => `${code}×${count}`)
       .join(" ");
     lines.push(`  ${label} ${key}  ${counts} ${codes}`.trimEnd());
-    if (target.status === "failed" && target.sampleError) {
+    // NO CREDENTIALS quotes its error too: "which key" is the whole question a
+    // reader of that line has, and an absent PERPLEXITY_API_KEY used to arrive
+    // here as a 401 that read as a *wrong* key.
+    if (
+      (target.status === "failed" || target.status === "missing-credentials") &&
+      target.sampleError
+    ) {
       lines.push(
         `  ${" ".repeat(14)} ${" ".repeat(providerWidth)}  ↳ ${target.sampleError}`,
       );

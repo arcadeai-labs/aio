@@ -9,6 +9,7 @@ import type {
   UnifiedResult,
 } from "../types/unified-result.js";
 import { BaseProvider } from "./base.js";
+import { requireApiKey } from "./credentials.js";
 
 export class ExaProvider extends BaseProvider {
   readonly name = "exa";
@@ -18,6 +19,9 @@ export class ExaProvider extends BaseProvider {
   private _exa?: Exa;
 
   private get exa(): Exa {
+    // exa-js falls back to its own EXA_API_KEY when this is undefined and throws
+    // a message naming that variable when it is absent too — the fallback is to
+    // the right service, so passing the variable through is safe here.
     this._exa ??= new Exa(process.env.EXA_API_KEY);
     return this._exa;
   }
@@ -148,19 +152,28 @@ export class ExaProvider extends BaseProvider {
   }
 }
 
-function createSynthesisClient(provider: string): OpenAI {
+/**
+ * The synthesis half of this provider is an OpenAI-SDK client whose endpoint is
+ * chosen per target, so it carries the same hazard the dedicated Perplexity and
+ * OpenRouter providers did: an unset key becomes `undefined`, the SDK fills it
+ * from OPENAI_API_KEY, and the OpenAI credential goes to the other service. Both
+ * redirected branches resolve their variable explicitly; only the branches that
+ * talk to api.openai.com may rely on the SDK's own default, because there the
+ * default is the right key for the right host.
+ */
+export function createSynthesisClient(provider: string): OpenAI {
   switch (provider) {
     case "openai":
       return new OpenAI();
     case "openrouter":
       return new OpenAI({
         baseURL: "https://openrouter.ai/api/v1",
-        apiKey: process.env.OPENROUTER_API_KEY,
+        apiKey: requireApiKey("OPENROUTER_API_KEY", "OpenRouter"),
       });
     case "perplexity":
       return new OpenAI({
         baseURL: "https://api.perplexity.ai",
-        apiKey: process.env.PERPLEXITY_API_KEY,
+        apiKey: requireApiKey("PERPLEXITY_API_KEY", "Perplexity"),
       });
     default:
       return new OpenAI();
