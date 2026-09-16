@@ -100,6 +100,13 @@ const CREDENTIAL_MESSAGE_PATTERNS = [
   /api[ _-]?key.{0,40}(missing|empty|not set|not provided|is required)/i,
   /(no|invalid|incorrect|unauthorized).{0,20}api[ _-]?key/i,
   /authentication (failed|error)/i,
+  // The Claude Code CLI's own wording, read off a real subprocess run rather
+  // than guessed: "Failed to authenticate. API Error: 401 API key is invalid."
+  // It reaches us only because anthropic-agent now folds subprocess stderr into
+  // the error message; before that this arrived as a bare exit code and was
+  // indistinguishable from a broken model id.
+  /failed to authenticate/i,
+  /api[ _-]?key is (invalid|incorrect|not valid)/i,
 ];
 
 /** True when this error means the provider's credentials are absent or refused. */
