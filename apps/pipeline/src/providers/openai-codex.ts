@@ -10,6 +10,15 @@ import { BaseProvider } from "./base.js";
 export class OpenAICodexProvider extends BaseProvider {
   readonly name = "codex";
   readonly displayName = "OpenAI Codex";
+  // STALE, and deliberately not guessed at. `o3` / `o4-mini` are two
+  // generations behind and `codex-mini` is not an id in OpenAI's catalog
+  // (`codex-mini-latest` is). But this provider drives @openai/codex-sdk, which
+  // shells out like the Agent SDK does, and the installed package carries no
+  // model vocabulary to read — so there is no local evidence for what it
+  // actually accepts, and inventing a current-looking id here is exactly the
+  // mistake that took `anthropic-agent` to 0/16. `codex` is not in
+  // DEFAULT_TARGETS, so nothing runs these; fixing them needs a credentialed
+  // call, which belongs with whoever adds this provider to the matrix.
   readonly supportedModels = ["o4-mini", "o3", "codex-mini"];
 
   private _codex?: Codex;

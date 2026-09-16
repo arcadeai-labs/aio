@@ -192,6 +192,84 @@ describe("summarizeRun", () => {
   });
 });
 
+// The regression the credentialed verification run on PR #14 found: every
+// anthropic-agent prompt failed with a bare subprocess exit code while the five
+// other targets were clean. These lock in that such a run cannot exit 0.
+describe("the anthropic-agent regression of 2026-09-16", () => {
+  // Copied verbatim from the recorded result record, not paraphrased.
+  const AGENT_EXIT = err("UNKNOWN", "Claude Code process exited with code 1", {
+    retriesAttempted: 2,
+  });
+
+  const MATRIX: TargetEntry[] = [
+    { provider: "openai", model: "gpt-5.6-terra" },
+    { provider: "anthropic", model: "claude-sonnet-5" },
+    { provider: "anthropic-agent", model: "claude-sonnet-4-6" },
+    { provider: "openrouter", model: "openai/gpt-5.6-terra:online" },
+    { provider: "perplexity", model: "sonar-pro" },
+    { provider: "exa", model: "exa-auto" },
+  ];
+
+  function replayRun() {
+    return summarizeRun(
+      MATRIX,
+      MATRIX.flatMap((t) =>
+        outcomes(
+          t.provider,
+          t.model,
+          Array.from({ length: 16 }, () =>
+            t.provider === "anthropic-agent" ? AGENT_EXIT : OK,
+          ),
+        ),
+      ),
+    );
+  }
+
+  test("one provider at 0/16 fails the run even though the other five are clean", () => {
+    const summary = replayRun();
+    expect(summary.succeeded).toBe(80);
+    expect(summary.failed).toBe(16);
+    expect(summary.ok).toBe(false);
+    expect(summary.failedTargets).toEqual([
+      "anthropic-agent/claude-sonnet-4-6",
+    ]);
+  });
+
+  test("a bare subprocess exit code is not mistaken for an absent key", () => {
+    // Misclassifying this as missing-credentials would exit 0 and ship the gap.
+    expect(isCredentialError(AGENT_EXIT)).toBe(false);
+    expect(replayRun().missingCredentialTargets).toEqual([]);
+  });
+
+  test("the summary names the failing target and quotes what it said", () => {
+    const text = formatRunSummary(replayRun());
+    expect(text).toContain("anthropic-agent/claude-sonnet-4-6");
+    expect(text).toContain("0/16 ok");
+    expect(text).toContain("PROVIDER FAILURE");
+    expect(text).toContain("Claude Code process exited with code 1");
+  });
+
+  test("subprocess stderr folded into the message reclassifies a real auth failure", () => {
+    // What the same failure looks like once anthropic-agent attaches stderr —
+    // string taken from an actual CLI run, not invented. An absent/invalid key
+    // must read as missing-credentials, not as a broken model id.
+    const withStderr = err(
+      "CLAUDE_CODE_EXIT_1",
+      "Claude Code process exited with code 1 — stderr: Failed to authenticate. API Error: 401 API key is invalid.",
+    );
+    expect(isCredentialError(withStderr)).toBe(true);
+
+    const summary = summarizeRun(
+      [{ provider: "anthropic-agent", model: "claude-sonnet-4-6" }],
+      outcomes("anthropic-agent", "claude-sonnet-4-6", [
+        withStderr,
+        withStderr,
+      ]),
+    );
+    expect(summary.targets[0].status).toBe("missing-credentials");
+  });
+});
+
 describe("formatRunSummary", () => {
   test("names the failing target and says why it matters", () => {
     const text = formatRunSummary(

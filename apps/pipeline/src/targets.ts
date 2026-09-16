@@ -21,11 +21,35 @@ import type { TargetEntry } from "./types/config.js";
  *                    supported surfaces.
  *
  *   anthropic        claude-sonnet-4-6 → claude-sonnet-5
- *   anthropic-agent  Anthropic's models overview lists the current lineup as
+ *                    Anthropic's models overview lists the current lineup as
  *                    claude-fable-5-1 / claude-opus-5 / claude-sonnet-5 /
  *                    claude-haiku-4-5-20251001, with claude-sonnet-4-6 under
  *                    "Legacy models (still available)". Sonnet 5 is the direct
- *                    current equivalent of the tier that was pinned.
+ *                    current equivalent of the tier that was pinned. Verified
+ *                    by the credentialed run: 16/16, zero errors.
+ *
+ *   anthropic-agent  claude-sonnet-4-6 — DELIBERATELY LAGS THE ROW ABOVE.
+ *                    This row was moved to claude-sonnet-5 alongside the API
+ *                    row and the credentialed run returned 0/16, every prompt,
+ *                    retries exhausted. It is reverted here, and the lag is the
+ *                    point rather than an oversight:
+ *
+ *                    This provider does not call the Messages API. It drives
+ *                    @anthropic-ai/claude-agent-sdk, which spawns the Claude
+ *                    Code CLI as a subprocess — a second, independently
+ *                    versioned artifact with its own model vocabulary. The
+ *                    pinned SDK (0.2.50) bundles Claude Code 2.1.50, whose
+ *                    binary contains no Claude 5 model string at all; the
+ *                    newest id per tier it knows is claude-opus-4-6,
+ *                    claude-sonnet-4-6, claude-haiku-4-5-20251001.
+ *
+ *                    So `anthropic` accepting claude-sonnet-5 says nothing
+ *                    about this row, and its 16/16 is precisely the evidence
+ *                    that misleads. claude-sonnet-4-6 is the newest id with
+ *                    positive evidence behind it here — the baseline run had it
+ *                    at 16/16 on this same SDK version. Moving this row forward
+ *                    needs a newer @anthropic-ai/claude-agent-sdk, not a newer
+ *                    string, and that dependency bump is its own change.
  *
  *   openrouter       openai/gpt-5.2:online → openai/gpt-5.6-terra:online
  *                    Kept in lockstep with the `openai` row on purpose: the two
@@ -63,7 +87,7 @@ import type { TargetEntry } from "./types/config.js";
 export const DEFAULT_TARGETS: TargetEntry[] = [
   { provider: "openai", model: "gpt-5.6-terra" },
   { provider: "anthropic", model: "claude-sonnet-5" },
-  { provider: "anthropic-agent", model: "claude-sonnet-5" },
+  { provider: "anthropic-agent", model: "claude-sonnet-4-6" },
   { provider: "openrouter", model: "openai/gpt-5.6-terra:online" },
   { provider: "perplexity", model: "sonar-pro" },
   {

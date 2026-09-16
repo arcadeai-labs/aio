@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { listProviders } from "../src/providers/registry.js";
+import { getProvider, listProviders } from "../src/providers/registry.js";
 import { DEFAULT_TARGETS, targetForProvider } from "../src/targets.js";
 
 /**
@@ -50,5 +50,34 @@ describe("DEFAULT_TARGETS", () => {
 
   test("targetForProvider returns undefined for a provider outside the matrix", () => {
     expect(targetForProvider("codex")).toBeUndefined();
+  });
+
+  // `supportedModels` is a second source of truth for model validity, and
+  // `healthCheck()` probes `supportedModels[0]`. When the matrix moves and the
+  // list does not, the health check goes green against a model the pipeline no
+  // longer runs — which is this project's house style of bug: a confident,
+  // meaningless signal. Pin them together so drift fails here instead.
+  test("each provider's healthCheck probes the model the matrix actually runs", () => {
+    for (const target of DEFAULT_TARGETS) {
+      const provider = getProvider(target.provider);
+      expect({
+        provider: target.provider,
+        healthChecks: provider.supportedModels[0],
+      }).toEqual({ provider: target.provider, healthChecks: target.model });
+    }
+  });
+
+  // The Agent SDK drives a bundled Claude Code CLI that is versioned separately
+  // from the Messages API and lags it, so these two rows legitimately differ.
+  // Asserting the difference keeps a later "tidy-up" from syncing them and
+  // re-breaking anthropic-agent, which is exactly how it went to 0/16.
+  test("anthropic-agent is pinned independently of the anthropic API row", () => {
+    const api = targetForProvider("anthropic");
+    const agent = targetForProvider("anthropic-agent");
+    expect(api?.model).toBe("claude-sonnet-5");
+    expect(agent?.model).toBe("claude-sonnet-4-6");
+    expect(getProvider("anthropic-agent").supportedModels).not.toContain(
+      "claude-sonnet-5",
+    );
   });
 });
