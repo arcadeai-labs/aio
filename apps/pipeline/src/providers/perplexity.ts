@@ -31,6 +31,11 @@ interface PerplexityResponse {
 export class PerplexityProvider extends BaseProvider {
   readonly name = "perplexity";
   readonly displayName = "Perplexity";
+  // Checked 2026-09-16: all four ids are current. Perplexity's docs carry
+  // "Sonar Chat Completions is now Agent API. Sonar will be supported until
+  // September 27, 2026" — this client talks to /chat/completions, and the Agent
+  // API is a different request shape, so that migration is a rewrite of this
+  // provider rather than a model-id change.
   readonly supportedModels = [
     "sonar-pro",
     "sonar",

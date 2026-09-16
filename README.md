@@ -73,6 +73,31 @@ A provider whose key is missing fails gracefully — the rest of the run still
 completes. `OPENAI_API_KEY` is used by OpenAI, Exa (for synthesis), Codex, and
 the analytics judge. `ANTHROPIC_API_KEY` covers both Anthropic providers.
 
+### Reading the run summary
+
+Every run ends with a per-target block and exits non-zero when a target that
+could have worked returned nothing:
+
+```
+────────────────────────────────────────────────────────────────────────
+RUN SUMMARY
+────────────────────────────────────────────────────────────────────────
+  OK             openai/gpt-5.2                 16/16 ok
+  FAILED         anthropic/claude-sonnet-5       0/16 ok      HTTP_404×16
+  NO CREDENTIALS perplexity/sonar-pro            0/16 ok      HTTP_401×16
+────────────────────────────────────────────────────────────────────────
+```
+
+The distinction matters. **NO CREDENTIALS** is a provider you have not
+configured; the run still exits 0, because the rest of it is valid. **FAILED**
+is a provider that answered with an error — a retired model id, a removed
+endpoint, an outage — and exits 1.
+
+Errored rows are written but excluded from every downstream denominator, so a
+run that quietly lost a provider still moves the dashboard, for reasons that
+have nothing to do with your brand. Do not `bun run analyze` or `bun run ingest`
+on a run that exited 1 until you know why.
+
 ## Prompts
 
 Edit `prompts/default.csv`:
@@ -98,17 +123,20 @@ A `Relevant` column, if present, filters rows out when set to `FALSE`.
 
 ## Targets
 
-By default every provider runs with a preset model. To customize, write a JSON
-file and pass `TARGETS_FILE`:
+By default every provider runs with a preset model, pinned in
+`apps/pipeline/src/targets.ts`. Those pins go stale — model ids get superseded
+and eventually retired — so treat them as something to re-check, not as
+something that maintains itself. To customize, write a JSON file and pass
+`TARGETS_FILE`:
 
 ```json
 [
-  { "provider": "anthropic", "model": "claude-sonnet-4-20250514" },
+  { "provider": "anthropic", "model": "claude-sonnet-5" },
   { "provider": "perplexity", "model": "sonar-pro" },
   {
     "provider": "exa",
     "model": "exa-auto",
-    "options": { "synthesisProvider": "openai", "synthesisModel": "gpt-4o-mini" }
+    "options": { "synthesisProvider": "openai", "synthesisModel": "gpt-5.4-mini" }
   }
 ]
 ```
@@ -116,6 +144,11 @@ file and pass `TARGETS_FILE`:
 ```bash
 TARGETS_FILE=targets.json bun run start
 ```
+
+Changing a model id starts a **new** week-over-week series: comparison matches
+on `(prompt, provider, model)`, so the old series ends silently and the new one
+begins with no history. That is the correct behaviour — a different model is a
+different measurement — but expect a gap in the trend on the run after a bump.
 
 ## Analytics
 
