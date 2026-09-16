@@ -167,6 +167,21 @@ describe("compareWeeks deltas", () => {
     expect(deltas.map((d) => d.prompt)).toEqual(["Q1"]);
   });
 
+  // SCHEMA.md tells a forker `deltas` is the intersection of the two weeks, and
+  // warns that the week a failed provider recovers shows no deltas for it. The
+  // test above covers a series that is new this week; this covers the other
+  // half — a series that had a verdict last week and none this week, which is
+  // what an outage produces.
+  test("skips previous results that have no matching current result", () => {
+    const prev = [verdict({ prompt: "Q1" }), verdict({ prompt: "Q2-gone" })];
+    const curr = [verdict({ prompt: "Q1" })];
+    const { deltas, summary } = compareWeeks(curr, prev, "a", "b");
+    expect(deltas.map((d) => d.prompt)).toEqual(["Q1"]);
+    // ...and the summary counts the whole current week, not the comparisons.
+    expect(summary.totalResults).toBe(1);
+    expect(deltas).toHaveLength(1);
+  });
+
   test("matches on prompt+provider+model, not prompt alone", () => {
     const prev = [verdict({ prompt: "Q", provider: "openai" })];
     const curr = [verdict({ prompt: "Q", provider: "anthropic" })];
