@@ -38,6 +38,9 @@ export async function loadAnalyticsConfig(
     resultsDir: parsed.resultsDir ?? DEFAULTS.resultsDir,
     outputDir: parsed.outputDir ?? DEFAULTS.outputDir,
     googleSheet: parsed.googleSheet,
+    // Carried through rather than defaulted: absent stays absent, so a config
+    // that says nothing about provenance never claims its runs are synthetic.
+    synthetic: parsed.synthetic,
   };
 }
 
