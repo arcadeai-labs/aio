@@ -1,4 +1,4 @@
-You are the **implementer** for issue #{{N}} on branch `slice/{{N}}-{{SLUG}}`.
+You are the **implementer** for issue #{{N}} on branch `{{BRANCH}}`.
 Sign every GitHub comment `**[implementer]**` — if every agent here runs under
 one GitHub account, the prefix is the only way to tell who said what.
 
@@ -67,9 +67,33 @@ tell by looking. Two consequences you will feel:
   docker compose --env-file .env.local down -v
   ```
 
-  Bun *does* load `.env.local` automatically, so `bun test` and `bun run ingest`
-  pick up `DATABASE_URL` with no flag. This asymmetry is the single most likely
+  Bun loads `.env.local` automatically for a normal run, so `bun run ingest`
+  picks up `DATABASE_URL` with no flag. This asymmetry is the single most likely
   thing to confuse you.
+- **`bun test` is the exception, and it fails silently.** `bun test` sets
+  `NODE_ENV=test`, and Bun deliberately does **not** load `.env.local` in the
+  test environment. So `DATABASE_URL` is absent under `bun test` even though it
+  is present under every other Bun command in the same worktree.
+
+  This matters far more than it sounds.
+  `packages/ingest/test/reconcile.test.ts` probes the database at import time and
+  degrades to `describe.skip` with a single `console.warn` when it cannot reach
+  one. The result is a green run that executed none of the DB-backed suite —
+  this project's characteristic bug, delivered by its own tooling. **A skipped
+  test is not a passing test.**
+
+  Export the file explicitly before you claim that suite passed:
+
+  ```sh
+  docker compose --env-file .env.local up -d db
+  set -a; . ./.env.local; set +a
+  bun test
+  ```
+
+  Then confirm in the output that the reconcile tests **ran** rather than
+  skipped, and quote the count. If you see
+  `[reconcile.test] no DB reachable — skipping DB-backed suite`, your suite did
+  not run and the green is meaningless.
 - **`COMPOSE_PROJECT_NAME` namespaces volumes, not just containers.** Dropping
   it does not cause a port clash you would notice; it silently points your
   worktree at another worktree's database.
@@ -81,6 +105,11 @@ tell by looking. Two consequences you will feel:
   silently ends the old one. Treat prompt text as a key.
 - **Migrations are `drizzle-kit` generated.** Edit the schema and regenerate;
   never hand-edit a file under `packages/db/drizzle/`.
+- **Your branch is already checked out; do not rename it.** Orca names worktree
+  branches `<gitUsername>/<worktree-name>`, so it will not look like
+  `slice/<issue>-<slug>`. That is expected. `{{BRANCH}}` above is the real name —
+  use it for the PR and for any `--ref`. Renaming desyncs Orca's worktree
+  metadata from git and gains nothing.
 
 ## Constraints
 
@@ -99,7 +128,7 @@ tell by looking. Two consequences you will feel:
 
 ## Finish
 
-1. Open a PR from `slice/{{N}}-{{SLUG}}` to `main`, body starting `Closes #{{N}}`
+1. Open a PR from `{{BRANCH}}` to `main`, body starting `Closes #{{N}}`
    with a short summary of what landed and how to run it.
 2. Post one PR comment headed `**[implementer]**` repeating every acceptance
    criterion as a checked box, each with one line of evidence: a test name, a

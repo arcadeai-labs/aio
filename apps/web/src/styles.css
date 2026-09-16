@@ -1200,6 +1200,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* A non-zero gap (missing verdicts / orphans) reads as a warning, matching the
+   scoreboard's .fresh__val--warn so the same fact looks the same on both pages. */
+.runs__num--warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
 .runs__date,
 .runs__ts {
   font-variant-numeric: tabular-nums;

@@ -11,8 +11,34 @@
 // Not part of the TS project (lives outside src/); it imports the built artifact
 // which only exists post-build.
 import { join, normalize, sep } from "node:path";
+import { isAccessRestricted, parseAllowedDomains } from "@aio/core";
+import { resolveAuthSecret } from "./src/lib/auth-secret";
+
+// Resolve the session signing secret HERE, at boot, before the SSR bundle is
+// even loaded — and then hand the result to the bundle through the environment.
+//
+// The bundle would resolve it on its own, but only on the first render, because
+// that is when its auth module is first imported. That is precisely the shape
+// of #20: a container that logs "listening", reports RestartCount=0, answers
+// one redirect, and then dies mid-request — a config error wearing the costume
+// of a flaky container. Doing it up here turns every remaining failure in that
+// resolution (a deployment with ALLOWED_EMAIL_DOMAINS set and no secret) into a
+// boot crash with a named variable in it, which is a thing a human can read.
+//
+// Writing the value back into `process.env` rather than passing it in keeps one
+// secret and one warning: the bundle's own call then sees a supplied value and
+// returns it untouched, instead of generating a second, different one.
+process.env.BETTER_AUTH_SECRET = resolveAuthSecret({
+  supplied: process.env.BETTER_AUTH_SECRET,
+  accessRestricted: isAccessRestricted(
+    parseAllowedDomains(process.env.ALLOWED_EMAIL_DOMAINS),
+  ),
+});
+
+// Dynamically imported so it lands *after* the resolution above. A static
+// import would be hoisted above it, and the ordering is the whole point.
 // @ts-expect-error — built artifact, present only after `vite build`.
-import handler from "./dist/server/server.js";
+const { default: handler } = await import("./dist/server/server.js");
 
 const port = Number(process.env.PORT ?? 3000);
 const clientDir = join(import.meta.dir, "dist", "client");

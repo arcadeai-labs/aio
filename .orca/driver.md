@@ -37,6 +37,11 @@ and is the only authoritative source for those values. If it is missing, copy
 `.orca/env.example.md` and fill it in with the human before dispatching
 anything.
 
+- **Branch names are Orca's, not yours.** A worktree started with
+  `--name issue-<N>-<slug>` lands on `<gitUsername>/issue-<N>-<slug>`, *not*
+  `slice/<N>-<slug>`. Read the real branch off the `worker-start` result and pass
+  it to `--base-branch` and `--worktree branch:...`, and fill `{{BRANCH}}` in the
+  implementer spec with it. Never ask a worker to rename its branch.
 - Always pass `--setup run`. The repo setup hook claims a block of ten ports,
   writes `AIO_PORT_WEB`, `AIO_PORT_DB` and `COMPOSE_PROJECT_NAME` into an
   untracked `.env.local`, and installs dependencies. You never assign ports; you
@@ -155,7 +160,7 @@ not see either.
 orca orchestration task-create --spec "<reviewer.md, placeholders filled>" --task-title "review #<N> r<round>" --json
 orca orchestration worker-start --task <task_id> \
   --worktree new-top-level --repo id:<repo-uuid> \
-  --base-branch slice/<N>-<slug> --name review-<N>-r<round> \
+  --base-branch <the worker's real branch> --name review-<N>-r<round> \
   --agent <rev-agent> --model <rev-model> --effort <effort> --setup run --json
 ```
 
@@ -172,7 +177,7 @@ worker message.
 **On `request_changes`** (rounds 1 and 2): reuse the implementer terminal.
 
 ```bash
-orca orchestration worker-start --task <fix_task> --terminal <impl_handle> --worktree branch:slice/<N>-<slug> --json
+orca orchestration worker-start --task <fix_task> --terminal <impl_handle> --worktree branch:<the worker's real branch> --json
 ```
 
 Spec: "Address every numbered finding in the latest `**[reviewer]**` comment on

@@ -12,6 +12,11 @@ export interface RunSummary {
   resultCount: number;
   verdictCount: number;
   orphanVerdictCount: number;
+  /**
+   * The raw `ingest_runs.status` — whether ingest read the files cleanly, not
+   * whether the run is healthy. The status a reader sees comes from
+   * `runHealth()` in lib/run-health.ts, shared with the scoreboard (issue #28).
+   */
   status: string;
   ingestedAt: string;
 }

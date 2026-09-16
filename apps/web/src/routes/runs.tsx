@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Nav } from "../components/Nav";
+import { RunStatusChip } from "../components/RunStatusChip";
 import { resolveUser } from "../lib/route-guard";
+import { runHealth } from "../lib/run-health";
 import { fetchRuns } from "../lib/runs";
 
 export const Route = createFileRoute("/runs")({
@@ -48,34 +50,49 @@ function Runs() {
                 <th>Run date</th>
                 <th className="runs__num">Results</th>
                 <th className="runs__num">Verdicts</th>
+                <th className="runs__num">No verdict</th>
                 <th className="runs__num">Orphans</th>
                 <th>Status</th>
                 <th>Ingested</th>
               </tr>
             </thead>
             <tbody>
-              {runs.map((run) => (
-                <tr key={run.runDate}>
-                  <td className="runs__date">{run.runDate}</td>
-                  <td className="runs__num">{run.resultCount}</td>
-                  <td className="runs__num">{run.verdictCount}</td>
-                  <td className="runs__num">{run.orphanVerdictCount}</td>
-                  <td>
-                    <span
+              {runs.map((run) => {
+                // Same derivation the scoreboard's freshness strip uses, so the
+                // two pages cannot label the same run differently (issue #28).
+                const health = runHealth(run);
+                return (
+                  <tr key={run.runDate}>
+                    <td className="runs__date">{run.runDate}</td>
+                    <td className="runs__num">{run.resultCount}</td>
+                    <td className="runs__num">{run.verdictCount}</td>
+                    <td
                       className={
-                        run.status === "ok"
-                          ? "runs__status runs__status--ok"
-                          : "runs__status runs__status--warn"
+                        health.missingVerdicts > 0
+                          ? "runs__num runs__num--warn"
+                          : "runs__num"
                       }
                     >
-                      {run.status}
-                    </span>
-                  </td>
-                  <td className="runs__ts">
-                    {formatTimestamp(run.ingestedAt)}
-                  </td>
-                </tr>
-              ))}
+                      {health.missingVerdicts}
+                    </td>
+                    <td
+                      className={
+                        health.orphanVerdicts > 0
+                          ? "runs__num runs__num--warn"
+                          : "runs__num"
+                      }
+                    >
+                      {health.orphanVerdicts}
+                    </td>
+                    <td>
+                      <RunStatusChip run={run} variant="runs" />
+                    </td>
+                    <td className="runs__ts">
+                      {formatTimestamp(run.ingestedAt)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

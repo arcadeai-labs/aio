@@ -26,7 +26,17 @@ finding — never a soft approve with caveats buried in prose.
 You are on the PR branch in a **fresh worktree** with its own port block and its
 own `COMPOSE_PROJECT_NAME` in `.env.local`. Nothing from the implementer's
 environment reaches you, which is the point. Compose does not read `.env.local`:
-use `docker compose --env-file .env.local ...`. Bun reads it automatically.
+use `docker compose --env-file .env.local ...`. Bun reads it automatically —
+**except under `bun test`**, which sets `NODE_ENV=test`, where Bun deliberately
+does not load `.env.local` at all. `packages/ingest/test/reconcile.test.ts` then
+finds no database and degrades to `describe.skip` behind a single `console.warn`.
+
+Treat this as a standing check, not a footnote. If the implementer claims the
+suite passes, verify it **ran**: export the file yourself
+(`set -a; . ./.env.local; set +a`) with the database up, and confirm the
+reconcile tests appear in the output. A bare `bun test` that reports green here
+has told you nothing, and "the tests pass" is the single most likely false claim
+you will be asked to confirm.
 
 ## Verify
 
