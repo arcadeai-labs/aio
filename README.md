@@ -95,9 +95,11 @@ could have worked returned nothing:
 ────────────────────────────────────────────────────────────────────────
 RUN SUMMARY
 ────────────────────────────────────────────────────────────────────────
-  OK             openai/gpt-5.6-terra           16/16 ok
-  FAILED         anthropic/claude-sonnet-5       0/16 ok      HTTP_404×16
-  NO CREDENTIALS perplexity/sonar-pro            0/16 ok      HTTP_401×16
+  OK             openai/gpt-5.6-terra       16/16 ok
+  FAILED         anthropic/claude-sonnet-5   0/16 ok      HTTP_404×16
+                                            ↳ 404 model not found
+  NO CREDENTIALS perplexity/sonar-pro        0/16 ok      missing_credentials×16
+                                            ↳ Missing credentials: PERPLEXITY_API_KEY is not set, so Perplexity cannot run.
 ────────────────────────────────────────────────────────────────────────
 ```
 
@@ -105,6 +107,12 @@ The distinction matters. **NO CREDENTIALS** is a provider you have not
 configured; the run still exits 0, because the rest of it is valid. **FAILED**
 is a provider that answered with an error — a retired model id, a removed
 endpoint, an outage — and exits 1.
+
+Both rows quote what the provider said, and an unset key says so by name. A
+provider reached through a custom endpoint — Perplexity, OpenRouter, and Exa's
+synthesis step — resolves its own variable before a client exists, so an absent
+key stops the target here rather than becoming a rejected request somewhere
+else. It never borrows `OPENAI_API_KEY`.
 
 Errored rows are written but excluded from every downstream denominator, so a
 run that quietly lost a provider still moves the dashboard, for reasons that
