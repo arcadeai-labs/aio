@@ -41,6 +41,33 @@ product, so the first run returns genuine mentions and rankings. When you are
 ready to track your own brand, start from `analytics.config.example.json`
 instead and edit it.
 
+### Filling it without API keys
+
+To see the dashboard populated before you have any provider keys, or to work on
+the dashboard itself:
+
+```bash
+cp analytics.config.example.json analytics.config.json
+bun run seed       # two weeks of generated runs -> results/ and results/analysis/
+bun run ingest     # load into Postgres          -> dashboard lights up
+```
+
+`bun run seed` makes no network calls and reads no clock. It builds a corpus
+from a fixed seed and writes it in exactly the format the real pipeline writes,
+through the same writer, so the dashboard is exercised against files the
+pipeline could have produced. Run it twice and you get byte-identical files;
+`SEED=anything-else bun run seed` gives a different corpus.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `SEED` | `aio-tracer` | Any string. Same seed, same corpus. |
+| `SEED_WEEKS` | `2` | How many runs, spaced exactly 7 days apart. |
+| `SEED_ANCHOR_DATE` | `2026-09-14` | Date of the most recent run. Fixed, not "today" — a corpus dated from the clock would not be reproducible. |
+
+**This data is synthetic and nothing in the dashboard says so.** Treat a
+database you have seeded as a scratch database, and `docker compose down -v`
+before you put real runs in it.
+
 ## How it fits together
 
 ```
