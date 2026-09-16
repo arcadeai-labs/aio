@@ -12,8 +12,7 @@ import { ParentSize } from "@visx/responsive";
 import { scaleLinear } from "@visx/scale";
 import { LinePath } from "@visx/shape";
 import { useTooltip, useTooltipInPortal } from "@visx/tooltip";
-import { motion, useReducedMotion } from "framer-motion";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
   DIM_STROKE_WIDTH,
   SERIES_STROKE_WIDTH,
@@ -165,7 +164,6 @@ function TrendChartInner({
     [n, xScale, showTooltip],
   );
 
-  const reduceMotion = useReducedMotion();
   const dim = series.filter((s) => !s.highlighted);
   const hl = series.filter((s) => s.highlighted);
   const idx = tooltipOpen && tooltipData ? tooltipData.index : -1;
@@ -174,6 +172,22 @@ function TrendChartInner({
   // project "no data" and "data I cannot see" looking identical is the
   // characteristic failure, so the difference is stated, not left to the eye.
   const empty = !hasDrawableSeries(series);
+  // Whether to play the entrance trace, decided once at mount.
+  //
+  // An entrance must never be the state a line is *left* in, and this one could
+  // be: the trace hides the line and reveals it, and browsers pause animations
+  // in a tab that is not painting. A chart mounted in a background tab held at
+  // the start of the trace — fully invisible — until something made the tab
+  // paint, which is the indefinite blank panel issue #25 reported and the
+  // reason two verification agents nearly filed populated charts as blank.
+  //
+  // So a chart that cannot be watched animating is rendered already-drawn. SSR
+  // has no `document` and also renders drawn, which is the safe direction: the
+  // fallback everywhere is a visible line.
+  const [trace] = useState(
+    () =>
+      typeof document !== "undefined" && document.visibilityState === "visible",
+  );
 
   const data = (s: TrendSeries): Datum[] => s.values.map((v, i) => ({ i, v }));
   const defined = (d: Datum) => d.v != null;
@@ -253,10 +267,10 @@ function TrendChartInner({
             />
           ))}
           {hl.map((s) => (
-            // Draw-in: each highlighted line traces itself on mount via pathLength
-            // (spec §9: "chart draw-in"). LinePath's render prop hands us the `d`
-            // string so a motion.path can animate it; reduced motion renders it
-            // already-drawn.
+            // Draw-in: each highlighted line traces itself on mount (spec §9:
+            // "chart draw-in"). LinePath's render prop hands us the `d` string;
+            // the trace is a CSS keyframe, and `pathLength={1}` normalizes the
+            // dash maths so the stylesheet needs no path's real length.
             <LinePath<Datum>
               key={s.label}
               data={data(s)}
@@ -265,16 +279,16 @@ function TrendChartInner({
               y={getY}
             >
               {({ path }) => (
-                <motion.path
+                <path
+                  className={
+                    trace
+                      ? "comp__chartline comp__chartline--trace"
+                      : "comp__chartline"
+                  }
                   d={path(data(s)) || ""}
-                  fill="none"
+                  pathLength={1}
                   stroke={s.color}
                   strokeWidth={SERIES_STROKE_WIDTH}
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                  initial={reduceMotion ? false : { pathLength: 0 }}
-                  animate={{ pathLength: 1 }}
-                  transition={{ duration: 0.6, ease: "easeOut" }}
                 />
               )}
             </LinePath>
