@@ -1,5 +1,6 @@
 {
   "_comment": "Copy to analytics.config.json and replace with your own brand. The values below describe Taskwell, a fictional to-do app, and line up with the seed prompts in prompts/default.csv. A fictional brand scores zero mentions everywhere, so use analytics.config.demo.json if you want a populated dashboard before wiring up your own.",
+  "_comment_synthetic": "This is the config `bun run seed` generates against, so it ships with \"synthetic\": true and every run ingested under it is marked as invented in the dashboard header. When you edit this file to track your own brand with real provider runs, DELETE the \"synthetic\" line — leaving it would label your measurements as fabricated.",
   "brand": {
     "name": "Taskwell",
     "aliases": ["Taskwell App", "taskwell.app"],
@@ -11,6 +12,7 @@
     "provider": "openai",
     "model": "gpt-5.2"
   },
+  "synthetic": true,
   "concurrency": 5,
   "resultsDir": "results",
   "outputDir": "results/analysis"
