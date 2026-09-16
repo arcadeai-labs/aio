@@ -234,8 +234,18 @@ jobs:
         run: |
           set -euo pipefail
           fail=0
-          check() {   # route  marker-class  human name
-            local route="$1" marker="$2" name="$3" file
+          # Every count below is ASSERTED, not merely printed. A check of the
+          # shape "nothing in this collection is wrong" passes on an EMPTY
+          # collection, so each route has to state how many of its marker it
+          # must show. Where that number has a structural source it is read
+          # from the source — the prompt CSV the seeder consumes, the
+          # reconciler's own run count, the four cohorts the funnel is defined
+          # as — never from a literal someone has to remember to update. `+`
+          # marks the counts the corpus decides (which competitors got
+          # discovered, which domains got cited): there is no source to read
+          # them from, so the honest assertion is "at least one".
+          check() {   # route  marker-class  human name  exact-count | +
+            local route="$1" marker="$2" name="$3" want="$4" file n
             file="/tmp/pop$(echo "$route" | tr '/' '_').html"
             curl -fsS -L --max-redirs 5 --max-time 30 -o "$file" "http://localhost:3000$route"
             if grep -aq "Something went wrong" "$file"; then
@@ -246,16 +256,30 @@ jobs:
               grep -ao 'class="shell__placeholder">[^<]*' "$file" | head -3
               fail=1; return
             fi
-            local n
-            n="$(grep -ao "class=\"$marker\"" "$file" | wc -l | tr -d ' ')"
-            [ "$n" -gt 0 ] || { echo "::error::$route: no $name rendered"; fail=1; return; }
-            echo "ok: $route -> $n $name"
+            # `|| true`: with `pipefail`, a marker that matches nothing fails
+            # the substitution and `set -e` would end the step silently, before
+            # either branch below could say which route came back empty.
+            n="$(grep -ao "class=\"$marker\"" "$file" | wc -l | tr -d ' ' || true)"
+            if [ "$want" = "+" ]; then
+              [ "$n" -gt 0 ] || {
+                echo "::error::$route: no $name rendered (expected at least 1)"
+                fail=1; return; }
+              echo "ok: $route -> $n $name (>= 1 required)"
+            else
+              [ "$n" = "$want" ] || {
+                echo "::error::$route: $n $name rendered, expected exactly $want"
+                fail=1; return; }
+              echo "ok: $route -> $n $name (exactly $want required)"
+            fi
           }
-          check /            funnel__count  "cohort funnel counts"
-          check /runs        runs__date     "run rows"
-          check /prompts     prompts__link  "prompt rows"
-          check /competitive comp__hbarname "competitor leaderboard rows"
-          check /cited       comp__block    "cited-view blocks"
+          # One row per prompt the seeder was handed: the CSV `bun run seed`
+          # defaults to with PROMPTS_FILE unset, minus its header line.
+          prompts="$(( $(grep -c . prompts/default.csv) - 1 ))"
+          check /            funnel__count  "cohort funnel counts"        4
+          check /runs        runs__date     "run rows"                    "$SEEDED_RUNS"
+          check /prompts     prompts__link  "prompt rows"                 "$prompts"
+          check /competitive comp__hbarname "competitor leaderboard rows" +
+          check /cited       comp__block    "cited-view blocks"           +
           if [ "$fail" = "1" ]; then docker compose logs web; exit 1; fi
 
       # The run list must have exactly one row per ingested run. Off-by-one here
@@ -264,8 +288,12 @@ jobs:
       - name: The run list has one row per ingested run
         run: |
           set -euo pipefail
-          rows="$(grep -ao 'class="runs__date"' /tmp/pop_runs.html | wc -l | tr -d ' ')"
-          header="$(grep -ao 'class="runs__count">[0-9,]*' /tmp/pop_runs.html | sed 's/.*>//; s/,//g')"
+          # `|| true` on both: with `pipefail`, a grep that matches nothing fails
+          # the whole substitution and `set -e` would kill the step SILENTLY,
+          # before the explicit message below ever runs. Let the count come back
+          # empty and let the assertion say what went wrong.
+          rows="$(grep -ao 'class="runs__date"' /tmp/pop_runs.html | wc -l | tr -d ' ' || true)"
+          header="$(grep -ao 'class="runs__count">[0-9,]*' /tmp/pop_runs.html | sed 's/.*>//; s/,//g' || true)"
           echo "ingested=$SEEDED_RUNS  table rows=$rows  header count=$header"
           [ "$rows" = "$SEEDED_RUNS" ] || {
             echo "::error::/runs shows $rows rows for $SEEDED_RUNS ingested runs"; exit 1; }
@@ -283,10 +311,23 @@ jobs:
       - name: Cohort counts stay inside the All denominator
         run: |
           set -euo pipefail
-          read -r all mentioned competitive cited <<<"$(
+          # `|| true` because `pipefail` + `set -e` would otherwise kill this
+          # step silently when the grep matches nothing — exactly the case the
+          # count assertion below exists to report.
+          counts="$(
             grep -ao 'class="funnel__count">[0-9,]*' /tmp/pop_.html \
-              | sed 's/.*>//; s/,//g' | tr '\n' ' '
+              | sed 's/.*>//; s/,//g' || true
           )"
+          # Four cohorts, asserted before any of them is compared. Three of the
+          # four checks below are "n <= All", and with nothing parsed there is
+          # nothing to exceed anything — the step would pass having read an
+          # empty page.
+          found="$(printf '%s\n' "$counts" | grep -c . || true)"
+          [ "$found" = "4" ] || {
+            echo "::error::/ rendered $found funnel counts, expected 4 (All, Mentioned, Competitive, Cited)"
+            exit 1; }
+          read -r all mentioned competitive cited \
+            <<<"$(printf '%s' "$counts" | tr '\n' ' ')"
           echo "All=$all Mentioned=$mentioned Competitive=$competitive Cited=$cited"
           [ "$all" -gt 0 ] || { echo "::error::All cohort is empty after ingest"; exit 1; }
           for pair in "Mentioned:$mentioned" "Competitive:$competitive" "Cited:$cited"; do
@@ -310,6 +351,12 @@ jobs:
       #   3. the run's All denominator is exactly the prior run's, minus the
       #      results that errored — i.e. they were dropped, not zeroed
       #
+      # Every one of those is "none of these cells is wrong", which is green on
+      # a collection that is EMPTY. So the size of each collection is asserted
+      # first — the provider row's five value cells, the coverage row's three,
+      # the funnel's four counts — and a row that has gone missing or a
+      # selector that no longer matches fails the step instead of emptying it.
+      #
       # The run date and provider are corpus structure, not tuning: if the seeder
       # ever stops producing an outage, this step failing is the correct outcome,
       # because CI would otherwise be silently unable to test the rule again.
@@ -328,6 +375,23 @@ jobs:
           EMDASH = "\u2014"
           failures = []
 
+          # ── Expected sizes, asserted before anything is read out of a row ────
+          #
+          # Every content check below is of the form "none of these cells is
+          # wrong", and that shape PASSES ON AN EMPTY COLLECTION: a row that
+          # yielded zero cells would print "ok" having tested nothing, which is
+          # the exact defect this job exists to catch. So each collection is
+          # first asserted to be the size the markup promises. A selector that
+          # drifts, a row that disappears, a column added or removed — each
+          # fails the step here rather than silently emptying it.
+          RATE_CELLS = 4                   # Mention, Avg acc., Owned-cite, 1st-place
+          PROVIDER_CELLS = 1 + RATE_CELLS  # the All count, then the rate cells
+          COVERAGE_CELLS = 3               # Attempted, Errored, Error rate
+          FUNNEL_COUNTS = 4                # All, Mentioned, Competitive, Cited
+
+          def die(msg):
+              sys.exit("::error::" + msg)
+
           def fetch(path):
               # curl, not urllib, and `-L` for the same reason the steps above use
               # it: `/` answers 307 before it renders anything (#20).
@@ -337,39 +401,67 @@ jobs:
               ).stdout
               return out.decode("utf-8", "replace")
 
-          def table(html, cls):
-              m = re.search(r'<table class="%s">.*?</table>' % cls, html, re.S)
-              if not m:
-                  sys.exit("::error::no <table class=\"%s\"> on the outage run page" % cls)
-              return m.group(0)
+          def table(html, cls, first_col):
+              """The <table class=cls> whose first header cell is `first_col`.
 
-          def row(table_html, provider):
-              for tr in re.findall(r"<tr>.*?</tr>", table_html, re.S):
-                  if re.search(r">%s(<|\s)" % re.escape(provider), tr):
-                      return tr
-              sys.exit('::error::provider "%s" has no row — the corpus no longer '
-                       "contains the outage this step exists to check" % provider)
+              The provider breakdown and the theme breakdown share one class, so
+              matching on the class alone takes whichever renders first — and
+              would then hunt for a provider row in the theme table and report
+              the outage gone. Match the header too.
+              """
+              for m in re.finditer(r'<table class="%s">.*?</table>' % cls, html, re.S):
+                  if re.search(r"<th[^>]*>%s\s*<" % first_col, m.group(0)):
+                      return m.group(0)
+              die('no <table class="%s"> headed "%s" on the outage run page'
+                  % (cls, first_col))
 
-          def vals(tr):
-              """The value spans of a row, in column order (deltas excluded)."""
-              return re.findall(r'<span class="themes__val">([^<]*)</span>', tr)
+          def cells(table_html, name, expected, what):
+              """`name`'s row, asserted to hold exactly `expected` value cells.
+
+              Both halves are load-bearing. Without the row lookup there is
+              nothing to check; without the count, an empty row satisfies every
+              assertion made over what this returns.
+              """
+              tr = next((t for t in re.findall(r"<tr>.*?</tr>", table_html, re.S)
+                         if re.search(r">%s(<|\s)" % re.escape(name), t)), None)
+              if tr is None:
+                  die('%s: "%s" has no row — the corpus no longer contains the '
+                      "outage this step exists to check" % (what, name))
+              got = re.findall(r'<span class="themes__val">([^<]*)</span>', tr)
+              if len(got) != expected:
+                  die("%s: %s's row yielded %d value cells, expected %d — the "
+                      "markup or the selector drifted, and every assertion over "
+                      "these cells would have passed over nothing. cells=%r"
+                      % (what, name, len(got), expected, got))
+              head = re.search(r"<thead>.*?</thead>", table_html, re.S)
+              cols = len(re.findall(r"<th[ >]", head.group(0))) if head else 0
+              if cols != expected + 1:
+                  die("%s: the header has %d columns but a row has %d value "
+                      "cells plus its label — a column was added or removed and "
+                      "this step no longer checks all of them"
+                      % (what, cols, expected))
+              print("ok: %s: %s's row has all %d value cells (%d required)"
+                    % (what, name, len(got), expected))
+              return got
 
           page = fetch("/?run=%s&segment=global&byProvider=true" % RUN)
           if "Something went wrong" in page:
-              sys.exit("::error::the outage run page rendered its error boundary")
+              die("the outage run page rendered its error boundary")
 
           # The page normalises an unknown `?run=` to the latest run, so confirm we
           # are looking at the run we asked for before believing anything on it.
           shown = re.search(r'class="score__rundate">([^<]*)</span>', page)
           if not shown or shown.group(1) != RUN:
-              sys.exit("::error::asked for run %s, page shows %s"
-                       % (RUN, shown.group(1) if shown else "nothing"))
+              die("asked for run %s, page shows %s"
+                  % (RUN, shown.group(1) if shown else "nothing"))
 
-          # 1 + 2 — the provider breakdown row.
-          prov_tr = row(table(page, "themes__table"), PROVIDER)
-          prov_vals = vals(prov_tr)          # All, mention, accuracy, owned-cite, 1st
+          # 1 + 2 — the provider breakdown row. `cells` has already asserted
+          # that exactly PROVIDER_CELLS were found, so `rates` below is exactly
+          # RATE_CELLS long and the em-dash check cannot pass over an empty list.
+          prov_vals = cells(table(page, "themes__table", "Provider"), PROVIDER,
+                            PROVIDER_CELLS, "provider breakdown")
           all_count = int(prov_vals[0].replace(",", ""))
-          rates = prov_vals[1:]
+          rates = prov_vals[1:]              # All count dropped; RATE_CELLS remain
           if all_count != 0:
               failures.append("%s kept %d error-free results in the outage run; "
                               "this step assumes the whole week errored"
@@ -380,11 +472,12 @@ jobs:
                               "an errored week is being counted as a zero"
                               % (PROVIDER, bad))
           else:
-              print("ok: %s renders %s for all %d rate cells, not 0.0%%"
-                    % (PROVIDER, EMDASH, len(rates)))
+              print("ok: %s renders %s in all %d rate cells (%d required), not 0.0%%"
+                    % (PROVIDER, EMDASH, len(rates), RATE_CELLS))
 
           # The coverage table is where the failure is supposed to be visible.
-          cov_vals = vals(row(table(page, "coverage__table"), PROVIDER))
+          cov_vals = cells(table(page, "coverage__table", "Provider"), PROVIDER,
+                           COVERAGE_CELLS, "coverage")
           attempted, errored = (int(v.replace(",", "")) for v in cov_vals[:2])
           if not (errored == attempted > 0):
               failures.append("coverage for %s reads attempted=%d errored=%d; "
@@ -394,8 +487,12 @@ jobs:
               print("ok: coverage shows %s attempted=%d errored=%d"
                     % (PROVIDER, attempted, errored))
 
-          def funnel_all(html):
+          def funnel_all(html, where):
               counts = re.findall(r'class="funnel__count">([0-9,]*)<', html)
+              if len(counts) != FUNNEL_COUNTS:
+                  die("%s: found %d funnel counts, expected %d — the denominator "
+                      "comparison would be reading the wrong number, or none"
+                      % (where, len(counts), FUNNEL_COUNTS))
               return int(counts[0].replace(",", ""))
 
           # 3 — the denominator moved by exactly the errored results. Read the
@@ -404,8 +501,9 @@ jobs:
           if not prior:
               failures.append("the outage run has no prior run to compare against")
           else:
-              prior_all = funnel_all(fetch("/?run=%s&segment=global" % prior.group(1)))
-              outage_all = funnel_all(page)
+              prior_all = funnel_all(fetch("/?run=%s&segment=global" % prior.group(1)),
+                                     "prior run %s" % prior.group(1))
+              outage_all = funnel_all(page, "outage run %s" % RUN)
               print("All: %s=%d  %s=%d  %s errored=%d"
                     % (prior.group(1), prior_all, RUN, outage_all, PROVIDER, errored))
               if outage_all != prior_all - errored:
