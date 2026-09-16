@@ -92,10 +92,18 @@ jobs:
       - name: Start the stack
         run: docker compose up -d --build
 
+      # `-L` is load-bearing. `/` answers 307 to `/?segment=global&...` before
+      # anything renders, and `curl -f` does NOT fail on a 3xx — so without it
+      # this step saved the redirect stub, declared the dashboard up, and left
+      # both content greps below to miss for a reason that had nothing to do
+      # with the content. That is how #20 spent the life of the repo disguised
+      # as an empty-state copy problem. Follow the redirect and /tmp/page.html
+      # is the page a browser would actually show.
       - name: Wait for the dashboard
         run: |
           for i in $(seq 1 60); do
-            if curl -fsS -o /tmp/page.html http://localhost:3000/; then
+            if curl -fsS -L --max-redirs 5 -o /tmp/page.html http://localhost:3000/; then
+              echo "final URL: $(curl -fsS -L --max-redirs 5 -o /dev/null -w '%{url_effective} (%{http_code})' http://localhost:3000/)"
               exit 0
             fi
             sleep 2
@@ -109,18 +117,50 @@ jobs:
       # 200 on some failures, and an empty database is exactly the state a fresh
       # clone is in — so assert the empty state renders, not merely that
       # something came back.
+      #
+      # `-a` because the SSR stream embeds NUL bytes, so grep classifies the
+      # saved page as binary. GNU grep still matches through it, but BSD grep
+      # (anyone reproducing this on macOS) reports no match — and a content
+      # assertion that answers differently depending on whose laptop runs it is
+      # exactly the kind of check this repo keeps getting burned by.
       - name: Dashboard renders the empty state, not an error
         run: |
-          if grep -q "Something went wrong" /tmp/page.html; then
+          if grep -aq "Something went wrong" /tmp/page.html; then
             echo "::error::dashboard rendered its error boundary"
             docker compose logs web
             exit 1
           fi
-          grep -q "No runs ingested yet" /tmp/page.html || {
+          grep -aq "No runs ingested yet" /tmp/page.html || {
             echo "::error::expected the empty-state message on a fresh database"
             head -c 2000 /tmp/page.html
             exit 1
           }
+
+      # A page that renders once is not a stack that works. #20 died on first
+      # render, restarted, and served exactly one redirect per life — so the
+      # container looked healthy to anything that asked it a single question.
+      # Ask all five pages, then check the process never went down answering
+      # them. A crash-restart loop cannot survive both assertions.
+      - name: Every page renders, and the web process never restarts
+        run: |
+          before="$(docker inspect -f '{{.RestartCount}}' "$(docker compose ps -q web)")"
+          failed=0
+          for route in / /runs /prompts /competitive /cited; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' -L --max-redirs 5 --max-time 30 "http://localhost:3000$route")"
+            echo "$route -> $code"
+            [ "$code" = "200" ] || failed=1
+          done
+          after="$(docker inspect -f '{{.RestartCount}}' "$(docker compose ps -q web)")"
+          echo "RestartCount: $before -> $after"
+          [ "$before" = "$after" ] || {
+            echo "::error::web restarted while serving pages ($before -> $after)"
+            failed=1
+          }
+          if [ "$failed" = "1" ]; then
+            docker compose ps
+            docker compose logs web
+            exit 1
+          fi
 
       # With ALLOWED_EMAIL_DOMAINS unset there is no sign-in flow, so /login must
       # redirect out rather than offer a button that cannot work. Getting this
