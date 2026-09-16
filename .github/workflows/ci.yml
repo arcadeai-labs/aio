@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck, lint and test
+    runs-on: ubuntu-latest
+
+    # A real Postgres, on purpose. packages/ingest/test/reconcile.test.ts uses
+    # `describe.skip` when no database is reachable, so without this the whole
+    # DB-backed suite reports green while running nothing — the one failure mode
+    # this project keeps rediscovering. CI is the place that must never skip it.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aio
+          POSTGRES_PASSWORD: aio
+          POSTGRES_DB: aio
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aio -d aio"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      DATABASE_URL: postgres://aio:aio@localhost:5432/aio
+      DATABASE_SSL: disable
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Pinned to the version the Dockerfile runs, so CI and the image
+          # cannot disagree about the runtime.
+          bun-version: 1.3.14
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Migrate
+        run: bun run --filter @aio/db db:migrate
+
+      - name: Test
+        run: bun test
+
+      # Neither `bun test` nor `tsc` exercises the SSR build, and the build is
+      # where most of this app's failures actually surface.
+      - name: Build web
+        run: bun run --filter @aio/web build
+
+  stack:
+    name: compose stack serves the dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # `docker compose up` is the entire promise this repo makes to someone who
+      # clones it, so it is tested rather than described. A Dockerfile that
+      # builds is not a stack that serves: a COPY narrowed to the wrong files, a
+      # missed workspace manifest, or a migration that races first-boot initdb
+      # all build green and only fail when something tries to use them.
+      - name: Start the stack
+        run: docker compose up -d --build
+
+      - name: Wait for the dashboard
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS -o /tmp/page.html http://localhost:3000/; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::dashboard did not answer on :3000"
+          docker compose ps
+          docker compose logs
+          exit 1
+
+      # A 200 is not a working page. TanStack renders its error boundary with a
+      # 200 on some failures, and an empty database is exactly the state a fresh
+      # clone is in — so assert the empty state renders, not merely that
+      # something came back.
+      - name: Dashboard renders the empty state, not an error
+        run: |
+          if grep -q "Something went wrong" /tmp/page.html; then
+            echo "::error::dashboard rendered its error boundary"
+            docker compose logs web
+            exit 1
+          fi
+          grep -q "No runs ingested yet" /tmp/page.html || {
+            echo "::error::expected the empty-state message on a fresh database"
+            head -c 2000 /tmp/page.html
+            exit 1
+          }
+
+      # With ALLOWED_EMAIL_DOMAINS unset there is no sign-in flow, so /login must
+      # redirect out rather than offer a button that cannot work. Getting this
+      # wrong produces an infinite redirect between / and /login, which a status
+      # check alone would not catch.
+      - name: Login redirects away when access is unrestricted
+        run: |
+          final="$(curl -fsS -o /dev/null -w '%{url_effective}' -L --max-redirs 5 http://localhost:3000/login)"
+          case "$final" in
+            *"/login"*) echo "::error::/login did not redirect away (landed on $final)"; exit 1 ;;
+            *) echo "ok: /login -> $final" ;;
+          esac
+
+      - name: Stop
+        if: always()
+        run: docker compose down -v

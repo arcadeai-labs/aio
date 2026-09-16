@@ -1,0 +1,102 @@
+# Local, self-contained stack: Postgres + the dashboard. Replaces the hosted
+# deployment this project used to ship with.
+#
+#   docker compose up --build        # first run: builds, migrates, serves :3000
+#   docker compose up                # subsequent runs
+#   docker compose down              # stop, keep data
+#   docker compose down -v           # stop and delete the database volume
+#
+# Works unchanged on Docker Desktop, OrbStack, Colima or plain dockerd — nothing
+# here depends on the VM backend.
+#
+# Ports come from AIO_PORT_WEB / AIO_PORT_DB, defaulting to 3000 and 5432. Agent
+# worktrees get their own values from scripts/orca-setup.sh, which writes them to
+# .env.local — compose does NOT read that file automatically, so those runs need
+# `docker compose --env-file .env.local ...`. Container and volume names are
+# namespaced by COMPOSE_PROJECT_NAME, which that hook also sets; without it two
+# worktrees would share one database volume while believing they were isolated.
+#
+# The pipeline (`bun run start`) and the ingest reconciler (`bun run ingest`)
+# stay on the host, not in a container: they need your API keys and they write
+# JSONL into ./results. They reach this database through the port published
+# below, which is why 5432 is exposed rather than kept on the internal network.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aio
+      POSTGRES_PASSWORD: aio
+      POSTGRES_DB: aio
+    ports:
+      # Host-published so `bun run ingest` and `drizzle-kit studio` can connect
+      # from your laptop. Override AIO_PORT_DB if 5432 is already taken — the
+      # Orca setup hook sets it per worktree so parallel agents do not collide.
+      - "${AIO_PORT_DB:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # `migrate` waits on this. Without it, migrations race the first-boot
+      # initdb and fail with "the database system is starting up".
+      test: ["CMD-SHELL", "pg_isready -U aio -d aio"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  # One-shot: applies drizzle migrations, then exits. `web` will not start until
+  # this succeeds, so the app never serves against an un-migrated schema.
+  migrate:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+    restart: "no"
+    working_dir: /app
+    command: ["bun", "run", "--filter", "@aio/db", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://aio:aio@db:5432/aio
+      # The driver requires SSL for any host that is not obviously localhost
+      # (see packages/db/src/client.ts). Inside the compose network the host is
+      # `db`, and this Postgres speaks plaintext, so SSL is turned off
+      # explicitly rather than by weakening that heuristic for real deployments.
+      DATABASE_SSL: disable
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${AIO_PORT_WEB:-3000}:3000"
+    environment:
+      DATABASE_URL: postgres://aio:aio@db:5432/aio
+      DATABASE_SSL: disable
+      PORT: 3000
+      # ── Access control ───────────────────────────────────────────────────
+      # Unset: the dashboard is OPEN — no sign-in, no identity provider, which
+      # is what makes `docker compose up` enough for a fresh clone. To require
+      # Google sign-in, set all four of the variables below (see README "Access
+      # control") and put the domain list in ALLOWED_EMAIL_DOMAINS:
+      #
+      #   ALLOWED_EMAIL_DOMAINS: example.com,partner.dev
+      #   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      #   BETTER_AUTH_URL: http://localhost:3000
+      #   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      #   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:${AIO_PORT_WEB:-3000}}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  db-data:

@@ -1,0 +1,2147 @@
+/*
+ * Fey-inspired design system (issue #14). Dark-only v1. A serious instrument:
+ * near-black layered surfaces, a refined grotesk (Geist) for UI with a monospace
+ * (Geist Mono) carrying every metric/count/delta in tabular numerals, one neutral
+ * accent, and green/red reserved strictly for gain/loss signal. Tokens are CSS
+ * variables so a light theme stays *possible* later (not built). Fonts are loaded
+ * as side-effects in __root.tsx.
+ */
+:root {
+  /* Layered near-black surfaces — base + raised panel; hairline border. Row
+     hovers elevate bg→surface, so a third surface step isn't needed yet. */
+  --bg: #08090a;
+  --surface: #0d0e11;
+  --border: #1d1f23;
+
+  /* Foreground tiers — high-contrast primary + muted secondary. (The chart's
+     dimmer axis/line greys are inlined in TrendChart, since SVG presentation
+     attributes can't read CSS custom properties.) */
+  --fg: #ededf0;
+  --fg-muted: #8a8f98;
+
+  /* One neutral interactive accent (near-white). Focus ring is for a11y only. */
+  --accent: #ededf0;
+  --accent-fg: #08090a;
+  --focus: #4c6ef5;
+
+  /* Semantic signal only — green = gain/good, red = loss/bad, amber = caution. */
+  --pos: #46c465;
+  --pos-border: #1c3326;
+  --neg: #f4554d;
+  --neg-border: #3d2224;
+  --warn: #d9a441;
+  --warn-border: #3a2f12;
+
+  /* Type — Geist grotesk for UI, Geist Mono for all numerics/data tokens. */
+  --font-sans:
+    "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+  --font-mono:
+    "Geist Mono Variable", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+    monospace;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Visible keyboard focus everywhere (quality floor) — the neutral focus ring is
+   the one place a non-semantic hue appears, purely for accessibility. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Respect reduced-motion: motion is purposeful, never required to read the page.
+   framer-motion components also check this via useReducedMotion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Monospace, tabular data tokens — every metric, count, delta, timestamp, query,
+   and table numeral aligns in columns like a trading terminal (spec §9). Grouped
+   here so the type treatment is one deliberate decision, not scattered per rule.
+   Appended-late single-class selectors so they win ties without raising
+   specificity. */
+.metric__value,
+.score__delta,
+.score__rundate,
+.runsw__select,
+.runsw__pos,
+.fresh__val,
+.funnel__count,
+.funnel__cond,
+.coverage__num,
+.themes__num,
+.themes__delta,
+.dd__num,
+.dd__meta,
+.dd__rundate,
+.dd__count,
+.runs__num,
+.runs__date,
+.runs__ts,
+.runs__count,
+.comp__num,
+.comp__hbarval,
+.comp__cohort,
+.comp__den,
+.comp__rundate,
+.comp__meta,
+.comp__leadlabel,
+.cited__statnum,
+.cited__statmeta,
+.cited__urlcount,
+.rd__value,
+.rd__query,
+.prompts__count,
+.grid__date,
+.grid__link,
+.shell__email {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Authenticated shell --- */
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 52px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.shell__brand {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.shell__account {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.shell__email {
+  color: var(--fg-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.shell__signout {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.shell__signout:hover {
+  border-color: var(--fg-muted);
+}
+
+.shell__body {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 40px;
+}
+
+.shell__placeholder {
+  color: var(--fg-muted);
+  max-width: 36ch;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.shell__link {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.shell__body--top {
+  place-items: start center;
+}
+
+/* --- Scoreboard (home) --- */
+.score {
+  width: 100%;
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.score__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.score__runlabel {
+  color: var(--fg-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.score__rundate {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.score__wow {
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+/* Metric grid — four headline cells, tabular numerals aligned like a terminal. */
+.score__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.metric {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 18px 16px;
+  /* Faint top sheen — the hero cards read as raised above the flat support
+     panels below, giving the scoreboard a deliberate depth hierarchy. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.metric__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Unified micro-label — tracked uppercase, matching the "RUN" eyebrow and panel
+   titles so every label in the system reads as one deliberate type role. */
+.metric__name {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.metric__value {
+  margin-top: 10px;
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.metric__cohort {
+  margin: 12px 0 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.score__delta {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+/* Green = gain, red = loss (PRD: direction legible without reading numbers). */
+.score__delta--up {
+  color: var(--pos);
+  border-color: var(--pos-border);
+}
+
+.score__delta--down {
+  color: var(--neg);
+  border-color: var(--neg-border);
+}
+
+.score__delta--flat {
+  color: var(--fg-muted);
+}
+
+/* Run switcher + freshness — the dominant scoreboard control (issue #8). */
+.score__controls {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.runsw {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.runsw__step {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.runsw__step:hover {
+  border-color: var(--fg-muted);
+}
+
+.runsw__step--disabled {
+  color: var(--fg-muted);
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+.runsw__select {
+  appearance: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.runsw__select:hover {
+  border-color: var(--fg-muted);
+}
+
+.runsw__pos {
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  padding-left: 4px;
+}
+
+.fresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.fresh--warn {
+  border-color: var(--warn-border);
+}
+
+.fresh__title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  letter-spacing: 0.01em;
+}
+
+.fresh__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.fresh__label {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.fresh__val {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.fresh__val--warn {
+  color: var(--warn);
+}
+
+.fresh__note {
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+
+.fresh__status {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.fresh__status--ok {
+  color: var(--pos);
+  border-color: var(--pos-border);
+}
+
+.fresh__status--warn {
+  color: var(--warn);
+  border-color: var(--warn-border);
+}
+
+/* Cohort funnel — every metric's population, never a bare number. */
+.funnel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+}
+
+.funnel__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  letter-spacing: 0.01em;
+}
+
+.funnel__list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.funnel__step {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  align-items: baseline;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+/* Indent nested cohorts; the parallel Cited cohort sits back at the root. */
+.funnel__step--child {
+  padding-left: 18px;
+}
+
+.funnel__step--grandchild {
+  padding-left: 36px;
+}
+
+.funnel__step--parallel {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 10px;
+}
+
+.funnel__label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.funnel__cond {
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.funnel__count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+}
+
+/* Coverage / error indicator — surfaced separately from the rate cohorts. */
+.coverage {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+}
+
+.coverage__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.coverage__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  letter-spacing: 0.01em;
+}
+
+.coverage__note {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.coverage__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.coverage__table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--fg-muted);
+  font-size: 12px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.coverage__table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.coverage__table tr:last-child td {
+  border-bottom: none;
+}
+
+.coverage__provider {
+  font-weight: 600;
+}
+
+.coverage__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The base `th` rule (left) outranks `.coverage__num` on specificity, so the
+   numeric headers must be re-aligned right to sit over their right-aligned data
+   cells. Same for the theme table below. */
+.coverage__table th.coverage__num {
+  text-align: right;
+}
+
+.coverage__num--warn {
+  color: var(--neg);
+}
+
+.score__footnote {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+/* Segment selector — primary control; segmented pill, active option inverted. */
+.segctl {
+  display: inline-flex;
+  margin-left: auto;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.segctl__opt {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  text-decoration: none;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.segctl__opt:hover {
+  color: var(--fg);
+}
+
+.segctl__opt--active {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* Theme breakdown — segment × theme cross-tab, revealed via the toggle. */
+.themes {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+}
+
+.themes__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.themes__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  letter-spacing: 0.01em;
+}
+
+.themes__sub {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.themes__toggle {
+  margin-left: auto;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  text-decoration: none;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.themes__toggle:hover {
+  border-color: var(--fg-muted);
+}
+
+.themes__toggle--on {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.themes__empty {
+  margin: 12px 0 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+.themes__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.themes__table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--fg-muted);
+  font-size: 12px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.themes__table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.themes__table tr:last-child td {
+  border-bottom: none;
+}
+
+.themes__name {
+  font-weight: 600;
+}
+
+.themes__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Re-align numeric headers right (see note on .coverage__table th.coverage__num). */
+.themes__table th.themes__num {
+  text-align: right;
+}
+
+/* Value + WoW delta stacked inside one right-aligned numeric cell (issue #40).
+   Keeping them in the same cell keeps the tables narrow; both are tabular so the
+   deltas line up as their own column under the values. */
+.themes__val {
+  display: block;
+}
+
+/* The compact table-delta variant of the headline's `.score__delta` pill — same
+   semantics (`--up`/`--down`/`--flat`), no chrome, so it survives being repeated
+   down a dense table. `--neutral` is for count columns (a shifting denominator is
+   neither good nor bad); `--new` marks a key with no prior counterpart, which is
+   a fact, not a missing value. Sign is always explicit, so direction never
+   depends on color alone. */
+.themes__delta {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+
+.themes__delta--up {
+  color: var(--pos);
+}
+
+.themes__delta--down {
+  color: var(--neg);
+}
+
+.themes__delta--flat,
+.themes__delta--neutral {
+  color: var(--fg-muted);
+}
+
+/* The `new` marker sits inline beside a row's name, not in a numeric column. */
+.themes__delta--new {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg-muted);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* The delta's unit, carried once in the column header so cells stay narrow. */
+.themes__unit {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--fg-muted);
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Provider name as the drill-down entry point (issue #9). */
+.themes__drill {
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.themes__drill:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* --- Provider drill-down list (issue #9) --- */
+.dd {
+  flex: 1;
+  padding: 28px 24px;
+  max-width: 1040px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.dd__head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.dd__crumb {
+  font-size: 13px;
+}
+
+.dd__title {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.dd__meta {
+  color: var(--fg-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dd__rundate {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.dd__segctl {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.dd__seg {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.dd__seg:hover {
+  border-color: var(--fg-muted);
+}
+
+.dd__seg--active {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.dd__filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.dd__filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dd__filterlabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}
+
+.dd__select {
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+
+.dd__select:hover {
+  border-color: var(--fg-muted);
+}
+
+.dd__count {
+  margin-left: auto;
+  color: var(--fg-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dd__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.dd__table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--fg-muted);
+  font-size: 12px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dd__table th.dd__num {
+  text-align: right;
+}
+
+.dd__table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.dd__row:hover td {
+  background: var(--surface);
+}
+
+.dd__row--error td {
+  color: var(--fg-muted);
+}
+
+.dd__sort {
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.dd__sort:hover {
+  color: var(--fg);
+}
+
+.dd__sort--active {
+  color: var(--fg);
+}
+
+.dd__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.dd__prompt {
+  max-width: 460px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dd__theme {
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.dd__open {
+  color: var(--fg);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.dd__open:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* --- Result detail (issue #9 stub; editorial view is issue #10) --- */
+.rd {
+  flex: 1;
+  padding: 28px 24px;
+  max-width: 820px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.rd__head {
+  margin-bottom: 24px;
+}
+
+.rd__title {
+  margin: 0 0 14px;
+  font-size: 20px;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.rd__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.rd__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rd__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}
+
+.rd__value {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rd__section {
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+  margin-top: 18px;
+}
+
+.rd__h2 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  letter-spacing: 0.01em;
+}
+
+.rd__body {
+  margin: 0;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.rd__reason {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rd__empty,
+.rd__error {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+.rd__error {
+  color: var(--neg);
+}
+
+.rd__crumb {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+/* Secondary promptMeta facts — quieter than the headline facts row. */
+.rd__facts--meta {
+  margin-top: 12px;
+  gap: 14px;
+}
+
+.rd__facts--meta .rd__value {
+  color: var(--fg-muted);
+}
+
+/* Citation / search-result / owned-URL lists. */
+.rd__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rd__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rd__itemhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.rd__itemtitle {
+  font-size: 14px;
+}
+
+.rd__link {
+  color: var(--fg-muted);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rd__link:hover {
+  color: var(--fg);
+}
+
+.rd__snippet {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+/* Search queries — monospace, terminal-like. */
+.rd__queries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rd__query {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.rd__query::before {
+  content: "› ";
+  color: var(--fg-muted);
+}
+
+/* Verdict mention excerpts — quoted passages from the response. */
+.rd__excerpts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rd__excerpt {
+  border-left: 2px solid var(--border);
+  padding-left: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+/* Competitor chips. */
+.rd__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rd__chip {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  background: var(--surface);
+}
+
+/* --- Runs readout --- */
+.runs {
+  flex: 1;
+  padding: 28px 24px;
+  max-width: 920px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.runs__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.runs__title {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.runs__count {
+  color: var(--fg-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.runs__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.runs__table th,
+.runs__table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.runs__table th {
+  color: var(--fg-muted);
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.runs__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.runs__date,
+.runs__ts {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.runs__date {
+  font-weight: 600;
+}
+
+.runs__ts {
+  color: var(--fg-muted);
+}
+
+.runs__status {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.runs__status--ok {
+  color: var(--pos);
+  border-color: var(--pos-border);
+}
+
+.runs__status--warn {
+  color: var(--warn);
+  border-color: var(--warn-border);
+}
+
+/* --- Login --- */
+.auth {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth__card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auth__brand {
+  font-weight: 600;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+.auth__title {
+  margin: 4px 0 0;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.auth__subtitle {
+  margin: 0 0 20px;
+  color: var(--fg-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.auth__google {
+  appearance: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--accent-fg);
+  cursor: pointer;
+}
+
+.auth__google:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.auth__error {
+  margin: 14px 0 0;
+  color: var(--neg);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* --- Competitive landscape (issue #11) --- */
+.comp {
+  flex: 1;
+  padding: 28px 24px;
+  max-width: 1040px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.comp__head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 22px;
+}
+
+.comp__crumb {
+  font-size: 13px;
+}
+
+.comp__title {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.comp__meta {
+  color: var(--fg-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.comp__cohort {
+  font-family: var(--font-mono);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.comp__den,
+.comp__rundate {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.comp__controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.comp__segctl {
+  display: flex;
+  gap: 6px;
+}
+
+.comp__seg {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.comp__seg:hover {
+  border-color: var(--fg-muted);
+}
+
+.comp__seg--active {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.comp__filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.comp__filterlabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}
+
+.comp__select {
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.comp__select:hover {
+  border-color: var(--fg-muted);
+}
+
+.comp__block {
+  margin-bottom: 34px;
+}
+
+.comp__blocktitle {
+  margin: 0 0 4px;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+.comp__subtitle {
+  margin: 22px 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-muted);
+}
+
+.comp__blocknote {
+  margin: 0 0 14px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  max-width: 70ch;
+}
+
+.comp__blockhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.comp__leadlabel {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Chart/table toggle for the share-of-voice section. */
+.comp__toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.comp__tog {
+  background: transparent;
+  color: var(--fg-muted);
+  border: none;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.comp__tog:hover {
+  color: var(--fg);
+}
+
+.comp__tog--on {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* Horizontal bars — focused-run distributions (rank + SoV leaderboard). Each
+   value has its own row, so even tiny shares stay readable. */
+.comp__hbars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.comp__hbar {
+  display: grid;
+  grid-template-columns: 130px 1fr 120px;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The label column is a fixed-width flex row: the name is the only part allowed
+   to truncate, so a trailing marker (the brand's "us" chip) can never be ellipsed
+   out of existence by a long name. */
+.comp__hbarlabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.comp__hbarname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The brand's own row among the competitors (issue #40). Color alone never
+   carries it: the row is also weighted and wears an explicit "us" chip. */
+.comp__hbar--brand .comp__hbarlabel,
+.comp__hbar--brand .comp__hbarval {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.comp__us {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  vertical-align: 1px;
+  /* Never absorb the truncation the name is supposed to take. */
+  flex: none;
+  white-space: nowrap;
+}
+
+/* Inside the flex label the gap already spaces the chip; the inline margin is
+   for the table cell, where the chip follows plain text. */
+.comp__hbarlabel .comp__us {
+  margin-left: 0;
+}
+
+/* The share-of-voice note's clarification that the brand row is *not* the
+   headline mention rate. */
+.comp__brandnote {
+  color: var(--fg);
+}
+
+.comp__hbartrack {
+  position: relative;
+  height: 14px;
+  background: var(--surface);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.comp__hbarfill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  min-width: 1px;
+}
+
+.comp__hbarval {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--fg);
+}
+
+.comp__hbarmeta {
+  color: var(--fg-muted);
+}
+
+/* SVG line chart. */
+/* visx line chart (TrendChart). ParentSize fills the wrapper width; the fixed
+   height avoids layout shift while the chart measures + mounts on the client. */
+.comp__chartwrap {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.comp__chart {
+  display: block;
+}
+
+/* Crosshair tooltip (visx TooltipInPortal, rendered unstyled). */
+.comp__tip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--fg);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+}
+
+.comp__tiprun {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
+  margin-bottom: 6px;
+}
+
+.comp__tiprow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.comp__tiprow + .comp__tiprow {
+  margin-top: 2px;
+}
+
+.comp__tiplabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.comp__tipval {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+/* Legend. */
+.comp__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.comp__legenditem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.comp__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.comp__legendmore {
+  color: var(--fg-muted);
+}
+
+.comp__tablewrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.comp__num--focus {
+  color: var(--fg);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.comp__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.comp__table--lead {
+  margin-bottom: 8px;
+}
+
+.comp__table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--fg-muted);
+  font-size: 12px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.comp__table th.comp__num {
+  text-align: right;
+}
+
+.comp__table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.comp__row:hover td {
+  background: var(--surface);
+}
+
+.comp__row--active td {
+  background: var(--surface);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* The brand's pinned first row in the SoV matrix — held apart from the
+   competitor rows below it (issue #40). The left accent is scoped to the first
+   cell: `box-shadow` isn't additive across rules, so applying it to every `td`
+   would outrank `.comp__num--focus` and erase the focused-run column's underline
+   on precisely the row this PR pins to the top. */
+.comp__row--brand td {
+  background: var(--surface);
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.comp__row--brand td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.comp__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.comp__num--key {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.comp__name {
+  white-space: nowrap;
+}
+
+/* ── Cited view (issue #12) ────────────────────────────────────────────────
+   Reuses the comp__ block/chart/table/toggle chrome; these classes cover the
+   focused-run reach stat and the owned-URL list (the bits the competitive view
+   doesn't have). */
+
+/* Focused-run reach headline — one big rate with its population beside it. */
+.cited__stat {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0 0 8px;
+}
+
+.cited__statnum {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.cited__statmeta {
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Owned-URL list — one row per distinct URL, most-cited first. */
+.cited__urls {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cited__url {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 10px 12px;
+}
+
+.cited__urlhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cited__urllink {
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.cited__urllink:hover {
+  text-decoration: underline;
+}
+
+.cited__urlcount {
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Provider chips linking back to each citing result. */
+.cited__results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.cited__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--fg-muted);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.cited__chip:hover {
+  color: var(--fg);
+  border-color: var(--fg-muted);
+}
+
+/* ── Unified top nav (shared across all pages) ─────────────────────────────── */
+
+/* The primary nav sits between the brand and the account block. Every page shows
+   the same links in the same order; the active one is highlighted so the bar is
+   consistent and self-locating. */
+.shell__nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: auto;
+  margin-left: 24px;
+}
+
+.shell__navlink {
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--fg-muted);
+  font-size: 13px;
+  text-decoration: none;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.shell__navlink:hover {
+  color: var(--fg);
+  background: var(--border);
+}
+
+.shell__navlink--active {
+  color: var(--fg);
+  background: var(--border);
+}
+
+/* ── Prompt-trajectory pages (issue #13) ───────────────────────────────────── */
+
+/* Prompt list — reuses the comp__table chrome; these tune the prompt-specific
+   columns (long text, a heat-strip cell, the active-run mention rate). */
+.prompts__search {
+  min-width: 200px;
+}
+
+.prompts__count {
+  margin-bottom: 8px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.prompts__table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.prompts__text {
+  max-width: 0; /* with table-layout:fixed, lets the cell ellipsize */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompts__link {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.prompts__link:hover {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.prompts__theme {
+  width: 18%;
+  color: var(--fg-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompts__trendhead {
+  width: 180px;
+}
+
+.prompts__spark {
+  width: 180px;
+}
+
+/* Drill-down prompt cell — make the text a quiet link to the trajectory page. */
+.dd__promptlink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.dd__promptlink:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* One-row mention-rate heat strip (list rows). One cell per run, oldest→newest. */
+.strip {
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+}
+
+.strip__cell {
+  width: 12px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--border); /* default before an explicit fill */
+}
+
+.strip__cell--gap {
+  background: transparent;
+  border: 1px dashed var(--border);
+  box-sizing: border-box;
+}
+
+.strip__cell--active {
+  outline: 1px solid var(--fg-muted);
+  outline-offset: 1px;
+}
+
+/* ── Trajectory heatmap grid (provider × run) ──────────────────────────────── */
+
+.grid {
+  border-collapse: separate;
+  border-spacing: 3px;
+}
+
+.grid__corner {
+  width: 110px;
+}
+
+.grid__date {
+  color: var(--fg-muted);
+  font-size: 10px;
+  font-weight: 500;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  padding-bottom: 2px;
+}
+
+.grid__rowlabel {
+  text-align: right;
+  padding-right: 8px;
+  color: var(--fg);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.grid__cell {
+  width: 34px;
+  height: 28px;
+  padding: 0;
+}
+
+.grid__link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.grid__link:hover {
+  outline: 1px solid var(--fg);
+  outline-offset: 0;
+}
+
+.grid__glyph {
+  line-height: 1;
+}
+
+/* A gap (absent run): empty, dashed — never a filled zero. */
+.grid__cell--gap {
+  border: 1px dashed var(--border);
+  box-sizing: border-box;
+  border-radius: 4px;
+  text-align: center;
+  color: var(--fg-muted);
+  opacity: 0.6;
+}
+
+/* Heatmap legend. */
+.grid__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.grid__legendlabel {
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.grid__legenditem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.grid__swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--border);
+}
+
+.grid__swatch--off {
+  background: #1a1d22;
+}
+
+.grid__swatch--gap {
+  background: transparent;
+  border: 1px dashed var(--border);
+  box-sizing: border-box;
+}
+
+.grid__swatch--mention {
+  background: #3f9d5a;
+}
+
+.grid__swatch--cited {
+  background: #3f7fbf;
+}
+
+.grid__swatch--acc1 {
+  background: #5a2733;
+}
+
+.grid__swatch--acc2 {
+  background: #7a472e;
+}
+
+.grid__swatch--acc3 {
+  background: #7a6a2e;
+}
+
+.grid__swatch--acc4 {
+  background: #356a45;
+}
+
+.grid__swatch--acc5 {
+  background: #3f9d5a;
+}
+
+/* ── Responsive (quality floor) ─────────────────────────────────────────────
+   This is a desktop analyst instrument, but it must stay usable and free of
+   horizontal page-overflow down to a phone. The top bar's nav becomes a
+   horizontal scroll strip (min-width:0 lets the flex item shrink instead of
+   widening the page), the headline grid collapses to one column, and the dense
+   tables scroll inside their own containers rather than the page. */
+@media (max-width: 640px) {
+  .shell__bar {
+    padding: 0 14px;
+    gap: 10px;
+  }
+
+  .shell__brand {
+    white-space: nowrap;
+  }
+
+  .shell__nav {
+    min-width: 0;
+    margin-left: 12px;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .shell__nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .shell__navlink {
+    padding: 6px 8px;
+    white-space: nowrap;
+  }
+
+  /* The email is recoverable elsewhere; drop it so the nav has room to scroll. */
+  .shell__email {
+    display: none;
+  }
+
+  /* The scoreboard body is a centering grid whose auto track otherwise grows to
+     its widest child — a revealed breakdown table would stretch the track (and
+     the page) instead of scrolling. Flatten it to a block so .score is bounded
+     by the viewport and wide tables scroll inside their own box. */
+  .shell__body {
+    display: block;
+    padding: 24px 16px;
+  }
+
+  .score {
+    max-width: 100%;
+  }
+
+  .score__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dd,
+  .comp,
+  .runs,
+  .rd {
+    padding: 22px 16px;
+  }
+
+  /* Dense tables scroll horizontally within their own scroll area, never the
+     page — so revealing a breakdown can't widen the whole site. Each becomes a
+     block-level scroll box (the competitive view already wraps its tables in
+     .comp__tablewrap, so those are covered). */
+  .dd__table,
+  .runs__table,
+  .themes__table,
+  .coverage__table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}

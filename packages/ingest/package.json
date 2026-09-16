@@ -1,0 +1,14 @@
+{
+  "name": "@aio/ingest",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aio/core": "workspace:*",
+    "@aio/db": "workspace:*",
+    "drizzle-orm": "^0.38.0"
+  }
+}

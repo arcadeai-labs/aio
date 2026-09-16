@@ -1,0 +1,25 @@
+{
+  "name": "aio",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "start": "bun run apps/pipeline/src/index.ts",
+    "rerun-failed": "bun run apps/pipeline/src/rerun-failed.ts",
+    "run-missing": "bun run apps/pipeline/src/run-missing.ts",
+    "analyze": "bun run apps/pipeline/src/analytics/index.ts",
+    "learnings": "bun run apps/pipeline/src/learnings/index.ts",
+    "spreadsheet": "bun run apps/pipeline/src/analytics/spreadsheet.ts",
+    "gsheet": "bun run apps/pipeline/src/analytics/gsheet.ts",
+    "ingest": "bun run packages/ingest/src/index.ts",
+    "web": "bun run --filter @aio/web dev",
+    "test": "bun test",
+    "lint": "bunx @biomejs/biome check .",
+    "typecheck": "bun run --filter '@aio/*' typecheck"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7",
+    "@biomejs/biome": "^1"
+  }
+}

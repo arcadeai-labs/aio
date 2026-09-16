@@ -1,0 +1,40 @@
+{
+  "name": "@aio/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --port 3000",
+    "build": "vite build",
+    "start": "bun run server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aio/core": "workspace:*",
+    "@aio/db": "workspace:*",
+    "@fontsource-variable/geist": "^5.2.9",
+    "@fontsource-variable/geist-mono": "^5.2.8",
+    "@opentelemetry/api": "^1.9.1",
+    "@tanstack/react-router": "^1.170.16",
+    "@tanstack/react-start": "^1.168.26",
+    "@visx/axis": "^4.0.0",
+    "@visx/event": "^4.0.0",
+    "@visx/grid": "^4.0.0",
+    "@visx/group": "^4.0.0",
+    "@visx/responsive": "^4.0.0",
+    "@visx/scale": "^4.0.0",
+    "@visx/shape": "^4.0.0",
+    "@visx/tooltip": "^4.0.0",
+    "better-auth": "^1.6.19",
+    "drizzle-orm": "^0.38.0",
+    "framer-motion": "^12.40.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.0"
+  }
+}

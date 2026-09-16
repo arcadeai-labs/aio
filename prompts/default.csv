@@ -1,0 +1,17 @@
+prompt,category,topic,brandedType
+"What is Taskwell and who is it for?",Brand Understanding,Product Overview,Branded
+"Is Taskwell a good to-do app for someone managing both work and personal projects?",Brand Understanding,Product Overview,Branded
+"Taskwell vs Todoist — what's the difference for a small team?",Competitive & Decision,Comparison,Branded
+"Does Taskwell support natural-language task entry and recurring tasks?",Feature & Capability,Features,Branded
+"What do reviewers say are the biggest weaknesses of Taskwell?",Brand Understanding,Sentiment,Branded
+"How much does Taskwell cost, and what is included in the free tier?",Purchase & Pricing,Pricing,Branded
+"What is the best to-do list app in 2026?",Discovery & Recommendation,Recommendation,Unbranded
+"Which task manager should I use if I want offline support and end-to-end encryption?",Discovery & Recommendation,Recommendation,Unbranded
+"What are the best alternatives to Todoist?",Competitive & Decision,Comparison,Unbranded
+"I need a to-do app that syncs across iOS, Android and the web. What should I use?",Discovery & Recommendation,Platform Support,Unbranded
+"Which to-do apps let me capture tasks from email and Slack automatically?",Feature & Capability,Integrations,Unbranded
+"What should I look for when choosing a task management app for a five-person team?",Purchase & Pricing,Evaluation,Unbranded
+"Which personal task manager has the best natural-language date parsing?",Feature & Capability,Features,Unbranded
+"Are there any open-source self-hosted to-do list apps worth using?",Discovery & Recommendation,Open Source,Unbranded
+"What's the most affordable task management tool for freelancers?",Purchase & Pricing,Pricing,Unbranded
+"Which to-do apps have the best keyboard-driven interfaces for power users?",Feature & Capability,Usability,Unbranded

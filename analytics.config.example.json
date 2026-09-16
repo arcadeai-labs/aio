@@ -1,0 +1,17 @@
+{
+  "_comment": "Copy to analytics.config.json and replace with your own brand. The values below describe Taskwell, a fictional to-do app, and line up with the seed prompts in prompts/default.csv. A fictional brand scores zero mentions everywhere, so use analytics.config.demo.json if you want a populated dashboard before wiring up your own.",
+  "brand": {
+    "name": "Taskwell",
+    "aliases": ["Taskwell App", "taskwell.app"],
+    "ownedDomains": ["taskwell.app", "docs.taskwell.app"],
+    "groundTruthDescription": "Taskwell is a cross-platform to-do and task management app for individuals and small teams. It offers natural-language task capture, recurring tasks, offline-first sync across iOS, Android and the web, and shared project lists.",
+    "knownCompetitors": ["Todoist", "Things 3", "TickTick", "Notion", "Asana", "Any.do"]
+  },
+  "judgeModel": {
+    "provider": "openai",
+    "model": "gpt-5.2"
+  },
+  "concurrency": 5,
+  "resultsDir": "results",
+  "outputDir": "results/analysis"
+}

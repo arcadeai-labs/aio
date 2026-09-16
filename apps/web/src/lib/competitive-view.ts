@@ -1,0 +1,75 @@
+// Client-safe constants + formatters for the Competitive Landscape view. Like
+// segments.ts, this imports only *types* from @aio/db — importing a runtime value
+// from @aio/db would drag the Postgres driver into the browser bundle (it throws
+// on load without DATABASE_URL), which breaks hydration of the whole route. So
+// the presentational constants live here, client-side.
+import type { BrandRankKey } from "@aio/db";
+
+/** "All themes" sentinel — must match the server's COMPETITIVE_THEME_ALL. */
+export const COMPETITIVE_THEME_ALL = "all";
+
+/** The four brand-rank buckets, best→worst display order. */
+export const BRAND_RANK_KEYS: readonly BrandRankKey[] = [
+  "1",
+  "2",
+  "3",
+  "not_ranked",
+];
+
+export const RANK_LABEL: Record<BrandRankKey, string> = {
+  "1": "1st",
+  "2": "2nd",
+  "3": "3rd",
+  not_ranked: "Not ranked",
+};
+
+// Rank is good→bad signal: green (1st) → teal → amber → muted red (not ranked).
+// The same hues are used by the rank bars and the rank trend lines.
+export const RANK_COLOR: Record<BrandRankKey, string> = {
+  "1": "#4ade80",
+  "2": "#5eead4",
+  "3": "#fbbf24",
+  not_ranked: "#ff8585",
+};
+
+// Categorical palette for the highlighted share-of-voice lines (top competitors).
+// Distinct hues that hold up on the near-black surface.
+export const SOV_PALETTE = [
+  "#4ade80",
+  "#60a5fa",
+  "#fbbf24",
+  "#f472b6",
+  "#2dd4bf",
+  "#a78bfa",
+  "#fb923c",
+  "#38bdf8",
+  "#facc15",
+  "#f87171",
+];
+
+/** Single calm accent for the focused-run leaderboard bars (a ranking, not a set
+ * of categories needing distinct colors). */
+export const SOV_BAR = "#4f8cc9";
+
+/**
+ * The brand's own accent in every share-of-voice rendering (issue #40) — the
+ * near-white interactive accent (`--accent`), deliberately *not* a SOV_PALETTE
+ * slot or SOV_BAR, so it can never collide with a competitor's color. Color is
+ * never the only signal: every brand rendering also carries the explicit
+ * {@link BRAND_MARKER}.
+ */
+export const BRAND_SOV = "#ededf0";
+
+/** The explicit "this row is us" marker that accompanies {@link BRAND_SOV}. */
+export const BRAND_MARKER = "us";
+
+/** How many of the SoV trend series are highlighted (the rest are dimmed). */
+export const SOV_HIGHLIGHT_COUNT = 10;
+
+export const pct = (rate: number | null): string =>
+  rate === null ? "—" : `${(rate * 100).toFixed(1)}%`;
+
+export const count = (n: number): string => n.toLocaleString("en-US");
+
+/** Run dates are "YYYY-MM-DD"; axes/headers show the month-day for density. */
+export const shortDate = (d: string): string => d.slice(5);

@@ -1,0 +1,55 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Web app (TanStack Start) build + generated artifacts
+.output/
+.tanstack/
+.nitro/
+apps/web/src/routeTree.gen.ts
+
+.env
+.env.local
+.env.*.local
+
+# Data
+results/
+_results/
+analytics.config.json
+prompts/*.csv
+prompts/*.ipynb
+!prompts/default.csv
+!prompts/demo.csv
+
+# Google OAuth
+.google-tokens.json
+google-client-secret.json
+client_secret_*.json
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Python / Jupyter (prompt tooling)
+.venv/
+.ipynb_checkpoints/
+
+# Claude Code — local-only, never shared. Each of these is useful to keep on
+# disk; none of it belongs to a forker. settings.local.json in particular is
+# ignored globally on the author's machine, which would not protect a fork.
+.mcp.json
+.claude/settings.local.json
+.claude/worktrees/
+
+# Orca — role prompts in .orca/ are committed and public-safe. Everything under
+# local/ is machine-specific: env.md holds the Orca repo UUID and Run ID,
+# human/ is the operator's gate briefs, state/ is the driver's journal and DAG.
+.orca/local/

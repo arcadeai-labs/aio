@@ -1,0 +1,17 @@
+{
+  "_comment": "A worked example that produces a populated dashboard. Tracks Todoist — a real, widely-covered consumer to-do app — so every provider returns genuine mentions, citations and competitor rankings. Use this to see the tool working end to end before swapping in your own brand via analytics.config.example.json. Pair it with prompts/demo.csv, which drops the fictional-brand prompts.",
+  "brand": {
+    "name": "Todoist",
+    "aliases": ["Doist", "todoist.com"],
+    "ownedDomains": ["todoist.com", "doist.com"],
+    "groundTruthDescription": "Todoist is a cross-platform task management app built by Doist. It is known for natural-language task entry, recurring due dates, projects and labels, priority levels, and a Karma productivity scoring system. It runs on the web, macOS, Windows, iOS and Android, with a free tier and paid Pro and Business plans.",
+    "knownCompetitors": ["Things 3", "TickTick", "Microsoft To Do", "Notion", "Asana", "Any.do", "Apple Reminders"]
+  },
+  "judgeModel": {
+    "provider": "openai",
+    "model": "gpt-5.2"
+  },
+  "concurrency": 5,
+  "resultsDir": "results",
+  "outputDir": "results/analysis"
+}

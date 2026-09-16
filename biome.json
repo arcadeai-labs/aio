@@ -1,0 +1,40 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "include": [
+      "apps/**/*.ts",
+      "apps/**/*.tsx",
+      "packages/**/*.ts",
+      "packages/**/*.tsx"
+    ],
+    "ignore": [
+      "**/node_modules",
+      "**/dist",
+      "**/.output",
+      "**/.tanstack",
+      "**/routeTree.gen.ts",
+      "results",
+      "_results"
+    ]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": {
+        "noNonNullAssertion": "off"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  }
+}

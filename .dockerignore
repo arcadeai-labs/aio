@@ -1,0 +1,24 @@
+# Keep host-only and bulky paths out of the Docker build context.
+**/node_modules
+**/dist
+**/.output
+**/.tanstack
+**/.nitro
+**/*.tsbuildinfo
+apps/web/src/routeTree.gen.ts
+
+.git
+.env
+.env.*
+
+# Data archives (gitignored; never needed for the web image)
+results/
+_results/
+prompts/.venv/
+
+# Committed Google credential files (rotated out; never bake into an image)
+.google-tokens.json
+client_secret_*.json
+google-client-secret.json
+
+.DS_Store
