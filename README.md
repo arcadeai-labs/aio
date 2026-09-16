@@ -296,10 +296,16 @@ the top of the workflow file.
 
 ```bash
 bun install
+bun run --filter @aio/web build   # generates apps/web/src/routeTree.gen.ts
 bun run typecheck
 bun run lint
 bun test
 ```
+
+`routeTree.gen.ts` is gitignored and written by the TanStack Start Vite plugin,
+so on a fresh clone it does not exist and `typecheck` reports ~60 errors that
+are all one missing import. Build once and they go. CI does the same, in the
+same order, for the same reason.
 
 The DB-backed suite in `packages/ingest/test/reconcile.test.ts` **skips** when no
 Postgres is reachable, and a skip is not a pass. Run `docker compose up -d db`

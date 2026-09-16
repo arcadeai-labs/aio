@@ -49,6 +49,23 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      # This runs FIRST, before Typecheck, and the order is load-bearing.
+      # `apps/web/src/routeTree.gen.ts` is gitignored and written by the
+      # TanStack Start Vite plugin, so in a fresh checkout it does not exist
+      # until something runs the build. `apps/web/src/router.tsx` imports it,
+      # and typechecking without it produced one TS2307 plus ~60 downstream
+      # errors across `apps/web/src/routes/*` — invisible to anyone who had
+      # already built locally and had the file sitting untracked. See #12.
+      #
+      # This is the same command the Dockerfile runs to build the image, so
+      # there is one generation incantation in the repo rather than a CI-only
+      # copy that can drift from it.
+      #
+      # It also earns its own keep: neither `bun test` nor `tsc` exercises the
+      # SSR build, and the build is where most of this app's failures surface.
+      - name: Build web (also generates routeTree.gen.ts for Typecheck)
+        run: bun run --filter @aio/web build
+
       - name: Typecheck
         run: bun run typecheck
 
@@ -60,11 +77,6 @@ jobs:
 
       - name: Test
         run: bun test
-
-      # Neither `bun test` nor `tsc` exercises the SSR build, and the build is
-      # where most of this app's failures actually surface.
-      - name: Build web
-        run: bun run --filter @aio/web build
 
   stack:
     name: compose stack serves the dashboard
