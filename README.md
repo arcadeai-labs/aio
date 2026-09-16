@@ -48,8 +48,8 @@ the dashboard itself:
 
 ```bash
 cp analytics.config.example.json analytics.config.json
-bun run seed       # two weeks of generated runs -> results/ and results/analysis/
-bun run ingest     # load into Postgres          -> dashboard lights up
+bun run seed       # fifteen weeks of generated runs -> results/ and results/analysis/
+bun run ingest     # load into Postgres             -> dashboard lights up
 ```
 
 `bun run seed` makes no network calls and reads no clock. It builds a corpus
@@ -58,10 +58,32 @@ through the same writer, so the dashboard is exercised against files the
 pipeline could have produced. Run it twice and you get byte-identical files;
 `SEED=anything-else bun run seed` gives a different corpus.
 
+The default is a quarter — fifteen weekly runs — because that is the timescale
+the real thing moves on, and because a corpus that leaves views empty or metrics
+flat fails at the only job seed data has. The world it renders is deliberate:
+
+- **A large, sustained branded/unbranded gap.** Taskwell is named in ~90% of
+  branded-prompt results and ~7% of unbranded ones. Toggle the segment selector
+  and the whole dashboard changes.
+- **A description-accuracy recovery** from ~2.5/5 to ~4.5/5 across the middle of
+  the series, so the trend has shape and week-over-week deltas have something to
+  report.
+- **A competitor overtake.** TickTick climbs steadily and passes Taskwell on
+  2026-07-27, the 8th of the 15 runs. The competitive view shows the crossover.
+- **One provider fails for exactly one week** — `exa`, on 2026-08-03. Those
+  results carry an `error` and are excluded from every cohort and denominator
+  rather than counted as zeros, which is what makes that rule inspectable.
+- **A narrowing cohort funnel** (All ≫ Mentioned ≫ Cited) and **six providers
+  that genuinely differ**, so no row is the row above it.
+
+**Not every metric improves.** The 1st-place rate ends the series well below
+where it started: an interface that only ever renders gains has never been shown
+to render a loss, and a loss is the case a reader most needs to be able to read.
+
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `SEED` | `aio-tracer` | Any string. Same seed, same corpus. |
-| `SEED_WEEKS` | `2` | How many runs, spaced exactly 7 days apart. |
+| `SEED_WEEKS` | `15` | How many runs, spaced exactly 7 days apart. |
 | `SEED_ANCHOR_DATE` | `2026-09-14` | Date of the most recent run. Fixed, not "today" — a corpus dated from the clock would not be reproducible. |
 
 **This data is synthetic and nothing in the dashboard says so.** Treat a
