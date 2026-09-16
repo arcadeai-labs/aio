@@ -1,7 +1,9 @@
 // The deep module of `bun run seed`: a world spec plus an RNG in, the complete
-// two-record corpus out. Everything later — the narrative arc in #3, any richer
-// world model — lands here, so the interface is the deliverable and the numbers
-// below are deliberately flat.
+// corpus out. It renders records; `world.ts` decides what they should say and
+// `prose.ts` decides how they say it. Splitting those out is what lets a single
+// rule hold across the whole corpus — every sentence is drawn from a pool keyed
+// by the verdict it sits on, so the excerpts in the UI can never contradict the
+// charts beside them.
 //
 // PURITY CONTRACT (asserted by apps/pipeline/test/seed-scenario.test.ts):
 // the import block below is the whole of this module's outside world. No
@@ -11,6 +13,7 @@
 // clock would not be reproducible, and reproducibility is the point.
 import type {
   BrandConfig,
+  BrandRank,
   Citation,
   CompetitorEntry,
   JudgeModelConfig,
@@ -20,7 +23,34 @@ import type {
   UnifiedResult,
 } from "@aio/core";
 import type { PromptEntry, TargetEntry } from "../types/config.js";
+import {
+  ABSENCE_HYPOTHESES,
+  ACCURACY_REASONS,
+  COMPETITOR_PREDICATES,
+  type CompetitorVoice,
+  GENERIC_SOURCES,
+  Phrasebook,
+  QUERY_SUFFIXES,
+  type RankTier,
+  composeResponse,
+} from "./prose.js";
 import type { Rng } from "./rng.js";
+import {
+  type PromptKind,
+  accuracyMean,
+  accuracyTier,
+  brandTopChance,
+  competitorChance,
+  mentionChance,
+  outageTargetIndex,
+  outageWeekIndex,
+  ownedCitationChance,
+  providerProfile,
+  riserIndex,
+  riserIsAhead,
+  sampleAccuracy,
+  seriesPosition,
+} from "./world.js";
 
 /** The world `buildCorpus` renders. Everything it needs, nothing it can read. */
 export interface WorldSpec {
@@ -54,17 +84,6 @@ export interface SeededRun {
 export interface SeededCorpus {
   runs: SeededRun[];
 }
-
-// ── World constants ─────────────────────────────────────────────────────────
-// Flat on purpose. #3 replaces the world model wholesale; tuning these here
-// buys a corpus that is thrown away. They only need to keep every cohort in the
-// dashboard non-empty: some mentions and some misses, some owned citations,
-// some competitive answers, and a couple of provider errors so the coverage
-// indicator has something to show.
-const MENTION_RATE = 0.6;
-const OWNED_CITATION_RATE = 0.4;
-const COMPETITOR_MENTION_RATE = 0.35;
-const ERROR_RATE = 0.03;
 
 const RUN_START_HOUR_UTC = 9;
 const SECONDS_BETWEEN_RESULTS = 7;
@@ -130,68 +149,6 @@ export function recordedModel(target: TargetEntry): string {
   return target.model;
 }
 
-// ── Prose fragments ─────────────────────────────────────────────────────────
-// Enough variety that two results never read identically and a snippet looks
-// like prose. Not enough to be worth admiring — #3 owns what this says.
-
-const OPENERS = [
-  "A few tools come up consistently for this.",
-  "There are several credible options, and the right one depends on how you work.",
-  "Most round-ups converge on the same short list.",
-  "This comes down to a handful of well-established apps.",
-];
-
-const BRAND_CLAUSES = [
-  "is widely recommended for exactly this",
-  "shows up in most comparisons of this category",
-  "is the option reviewers reach for first",
-  "covers this well and is easy to get started with",
-  "is a strong fit if you want something that stays out of the way",
-];
-
-const COMPETITOR_CLAUSES = [
-  "is the more opinionated choice",
-  "is often suggested for teams",
-  "has a loyal following among power users",
-  "trades flexibility for polish",
-  "is the budget-conscious pick",
-];
-
-const CLOSERS = [
-  "Any of these will do the job; the differences show up after a few weeks of use.",
-  "Trial the shortlist before committing — the workflows diverge more than the feature lists suggest.",
-  "Pricing and platform coverage are usually the deciding factors.",
-];
-
-const ACCURACY_REASONS: Record<number, string> = {
-  5: "Matches the reference description on every material point.",
-  4: "Accurate overall; one capability is described more loosely than the reference.",
-  3: "Broadly right, but thin on detail and omits part of the reference description.",
-  2: "Several claims drift from the reference description.",
-  1: "Materially misdescribes the product.",
-};
-
-const ABSENCE_HYPOTHESES = [
-  "Answer stayed with the incumbents; the brand did not surface in retrieval.",
-  "No owned or high-authority source appeared among the cited pages.",
-  "Prompt was answered generically, without naming specific products.",
-];
-
-const GENERIC_SOURCES = [
-  { host: "roundup.example", label: "The Annual Round-Up" },
-  { host: "reviews.example", label: "Independent Reviews" },
-  { host: "forum.example", label: "Community Forum" },
-  { host: "guides.example", label: "Buyer's Guides" },
-];
-
-const QUERY_SUFFIXES = [
-  "review 2026",
-  "comparison",
-  "best options",
-  "pricing",
-  "alternatives",
-];
-
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Deterministic UUID-v4-shaped id, so seeded ids are indistinguishable in shape from `crypto.randomUUID()`. */
@@ -214,42 +171,28 @@ function shortQuery(prompt: string, rng: Rng): string {
   return `${words.slice(0, rng.int(4, 7)).join(" ")} ${rng.pick(QUERY_SUFFIXES)}`;
 }
 
-// ── Response composition ────────────────────────────────────────────────────
-
-interface Composed {
-  responseText: string;
-  /** Exact substrings of `responseText` — the sentences that name the brand. */
-  brandExcerpts: string[];
+/**
+ * Which segment a prompt belongs to. `promptMeta.brandedType` is the declared
+ * source (DESIGN §6); the text fallback exists because the branded/unbranded
+ * gap is the corpus's largest signal and an unlabelled prompt silently landing
+ * in the wrong half would shrink it without erroring.
+ */
+function promptKind(prompt: PromptEntry, brand: BrandConfig): PromptKind {
+  const declared = prompt.meta?.brandedType?.trim().toLowerCase();
+  if (declared === "branded" || declared === "unbranded") return declared;
+  const haystack = prompt.prompt.toLowerCase();
+  return [brand.name, ...brand.aliases].some((name) =>
+    haystack.includes(name.toLowerCase()),
+  )
+    ? "branded"
+    : "unbranded";
 }
 
-/**
- * Build the answer text and, from the same sentences, the excerpts the judge
- * would have quoted. Excerpts are sliced out of the text rather than written
- * alongside it, so "mentioned" can never be true over prose that does not
- * actually name the brand — this project's signature failure runs the other
- * way (a confident zero), and the same discipline catches a confident one.
- */
-function compose(
-  brand: string,
-  mentionedCompetitors: string[],
-  mentionCount: number,
-  rng: Rng,
-): Composed {
-  const sentences: string[] = [rng.pick(OPENERS)];
-  const brandExcerpts: string[] = [];
-
-  for (let i = 0; i < mentionCount; i++) {
-    const sentence = `${brand} ${rng.pick(BRAND_CLAUSES)}.`;
-    brandExcerpts.push(sentence);
-    sentences.push(sentence);
-  }
-
-  for (const competitor of mentionedCompetitors) {
-    sentences.push(`${competitor} ${rng.pick(COMPETITOR_CLAUSES)}.`);
-  }
-
-  sentences.push(rng.pick(CLOSERS));
-  return { responseText: sentences.join(" "), brandExcerpts };
+/** The reference description, one sentence at a time, for owned-page snippets. */
+function groundTruthSentences(description: string): string[] {
+  return (
+    description.match(/[^.!?]+[.!?]+/g)?.map((s) => s.trim()) ?? [description]
+  );
 }
 
 // ── The corpus ──────────────────────────────────────────────────────────────
@@ -276,27 +219,44 @@ export function buildCorpus(spec: WorldSpec, rng: Rng): SeededCorpus {
   const runs: SeededRun[] = [];
 
   // Oldest first, most recent last, exactly 7 days apart.
-  for (let week = spec.weeks - 1; week >= 0; week--) {
-    runs.push(buildRun(spec, shiftDays(spec.anchorDate, -7 * week), rng));
+  for (let week = 0; week < spec.weeks; week++) {
+    runs.push(
+      buildRun(
+        spec,
+        week,
+        shiftDays(spec.anchorDate, -7 * (spec.weeks - 1 - week)),
+        rng,
+      ),
+    );
   }
 
   return { runs };
 }
 
-function buildRun(spec: WorldSpec, runDate: string, rng: Rng): SeededRun {
+function buildRun(
+  spec: WorldSpec,
+  week: number,
+  runDate: string,
+  rng: Rng,
+): SeededRun {
   const runId = seededId(rng);
   const results: UnifiedResult[] = [];
   const verdicts: ResultVerdict[] = [];
+  const outageWeek = outageWeekIndex(spec.weeks);
+  const outageTarget = outageTargetIndex(spec.targets.length);
 
   let index = 0;
   for (const prompt of spec.prompts) {
-    for (const target of spec.targets) {
+    for (const [targetIndex, target] of spec.targets.entries()) {
       const { result, verdict } = buildCell({
         spec,
         runDate,
         runId,
         prompt,
         target,
+        targetIndex,
+        position: seriesPosition(week, spec.weeks),
+        errored: week === outageWeek && targetIndex === outageTarget,
         index: index++,
         rng,
       });
@@ -308,18 +268,44 @@ function buildRun(spec: WorldSpec, runDate: string, rng: Rng): SeededRun {
   return { runDate, runId, results, verdicts };
 }
 
+function rankTierFor(rank: BrandRank): RankTier {
+  return rank === 1
+    ? "leader"
+    : rank === 2
+      ? "contender"
+      : rank === 3
+        ? "trailing"
+        : "solo";
+}
+
 function buildCell(args: {
   spec: WorldSpec;
   runDate: string;
   runId: string;
   prompt: PromptEntry;
   target: TargetEntry;
+  targetIndex: number;
+  /** 0 at the oldest run, 1 at the newest. */
+  position: number;
+  errored: boolean;
   index: number;
   rng: Rng;
 }): { result: UnifiedResult; verdict: ResultVerdict | null } {
-  const { spec, runDate, runId, prompt, target, index, rng } = args;
+  const {
+    spec,
+    runDate,
+    runId,
+    prompt,
+    target,
+    targetIndex,
+    position: t,
+    errored,
+    index,
+    rng,
+  } = args;
   const { brand } = spec;
   const model = recordedModel(target);
+  const profile = providerProfile(targetIndex);
 
   const id = seededId(rng);
   const offset = index * SECONDS_BETWEEN_RESULTS;
@@ -341,9 +327,11 @@ function buildCell(args: {
     runId,
   };
 
-  // A provider that answered with an error. The real pipeline writes the row
-  // and the real analyzer refuses to judge it, so neither does this.
-  if (rng.chance(ERROR_RATE)) {
+  // The one-week outage. The real pipeline writes the row and the real analyzer
+  // refuses to judge it, so neither does this — which is what makes the
+  // exclusion of errored results from every cohort and denominator visible on
+  // the dashboard rather than merely documented.
+  if (errored) {
     return {
       result: {
         id,
@@ -366,20 +354,70 @@ function buildCell(args: {
     };
   }
 
-  const mentioned = rng.chance(MENTION_RATE);
-  const mentionCount = mentioned ? rng.int(1, 3) : 0;
+  const kind = promptKind(prompt, brand);
 
-  const competitors: CompetitorEntry[] = brand.knownCompetitors.map((name) => ({
-    name,
-    mentioned: rng.chance(COMPETITOR_MENTION_RATE),
-    citedUrls: [],
-  }));
+  // ── Verdict state first. Prose is derived from it below, never drawn
+  // alongside it: an excerpt that disagrees with its own result's rank or
+  // accuracy is the failure this corpus exists to avoid.
+  const mentioned = rng.chance(mentionChance(kind, profile));
+
+  const competitors: CompetitorEntry[] = brand.knownCompetitors.map(
+    (name, i) => ({
+      name,
+      mentioned: rng.chance(competitorChance(i, t, profile)),
+      citedUrls: [],
+    }),
+  );
   const mentionedCompetitors = competitors.filter((c) => c.mentioned);
+  const othersCount = mentionedCompetitors.length;
+  const othersPresent = othersCount > 0;
 
-  const { responseText, brandExcerpts } = compose(
-    brand.name,
-    mentionedCompetitors.map((c) => c.name),
-    mentionCount,
+  const accuracyScore = mentioned
+    ? sampleAccuracy(accuracyMean(t, profile), rng)
+    : null;
+  const tier = accuracyTier(accuracyScore ?? 3);
+
+  // The overtake, carried into the rank: once the riser has passed us, it takes
+  // the top slot in answers where it appears, so the brand cannot be first.
+  const riser = riserIndex(brand.knownCompetitors.length);
+  const riserAhead =
+    riserIsAhead(t) && (competitors[riser]?.mentioned ?? false);
+
+  let brandRank: BrandRank = "not_ranked";
+  if (mentioned && othersPresent) {
+    if (riserAhead) {
+      brandRank = rng.chance(0.55) ? 2 : 3;
+    } else {
+      brandRank = rng.chance(brandTopChance(t)) ? 1 : rng.chance(0.6) ? 2 : 3;
+    }
+  }
+  const rankTier = rankTierFor(
+    mentioned && othersPresent ? brandRank : "not_ranked",
+  );
+
+  const book = new Phrasebook();
+  const voices: CompetitorVoice[] = mentionedCompetitors.map((c) => {
+    const i = brand.knownCompetitors.indexOf(c.name);
+    return {
+      name: c.name,
+      poolIndex: i < 0 ? 0 : i,
+      ascendant: i === riser && riserIsAhead(t),
+    };
+  });
+
+  const { responseText, excerpts } = composeResponse(
+    {
+      promptKind: kind,
+      brand: brand.name,
+      mentioned,
+      rankTier,
+      accuracyTier: tier,
+      brandSentences: mentioned
+        ? 1 + (othersPresent ? 1 : 0) + (rng.chance(0.3) ? 1 : 0)
+        : 0,
+      competitors: voices,
+    },
+    book,
     rng,
   );
 
@@ -391,7 +429,7 @@ function buildCell(args: {
   const ownedCited =
     mentioned &&
     brand.ownedDomains.length > 0 &&
-    rng.chance(OWNED_CITATION_RATE);
+    rng.chance(ownedCitationChance(tier, profile));
 
   if (ownedCited) {
     const url = `https://${rng.pick(brand.ownedDomains)}/${rng.pick(["", "pricing", "docs/getting-started", "blog/why"])}`;
@@ -399,7 +437,12 @@ function buildCell(args: {
     searchResults.push({
       url,
       title: `${brand.name} — official`,
-      snippet: brand.groundTruthDescription.slice(0, 180),
+      snippet:
+        book.take(
+          groundTruthSentences(brand.groundTruthDescription),
+          "",
+          rng,
+        ) ?? brand.groundTruthDescription,
       score: Math.round(rng.next() * 1000) / 1000,
     });
   }
@@ -407,10 +450,21 @@ function buildCell(args: {
   for (const competitor of mentionedCompetitors) {
     const url = `https://${slug(competitor.name)}.example/`;
     competitor.citedUrls = [url];
+    const voice = voices.find((v) => v.name === competitor.name);
     searchResults.push({
       url,
       title: `${competitor.name} — overview`,
-      snippet: `${competitor.name} ${rng.pick(COMPETITOR_CLAUSES)}.`,
+      // A second, different sentence about the same product: three citations
+      // quoting one identical string is what a reader notices first.
+      snippet:
+        book.take(
+          COMPETITOR_PREDICATES[
+            (voice?.poolIndex ?? 0) % COMPETITOR_PREDICATES.length
+          ],
+          competitor.name,
+          rng,
+        ) ??
+        `${competitor.name} is covered in most comparisons of this category.`,
       score: Math.round(rng.next() * 1000) / 1000,
     });
   }
@@ -419,7 +473,7 @@ function buildCell(args: {
     searchResults.push({
       url: `https://${source.host}/${slug(prompt.prompt).slice(0, 48)}`,
       title: `${source.label}: ${prompt.prompt}`,
-      snippet: rng.pick(CLOSERS),
+      snippet: book.take(source.snippets, "", rng) ?? source.label,
       score: Math.round(rng.next() * 1000) / 1000,
     });
   }
@@ -471,9 +525,6 @@ function buildCell(args: {
     error: null,
   };
 
-  const othersCount = mentionedCompetitors.length;
-  const accuracyScore = mentioned ? rng.int(2, 5) : null;
-
   const verdict: ResultVerdict = {
     resultId: id,
     prompt: prompt.prompt,
@@ -482,30 +533,30 @@ function buildCell(args: {
     promptCategory: prompt.category ?? null,
     brandMention: {
       mentioned,
-      mentionCount,
-      excerpts: brandExcerpts,
+      mentionCount: excerpts.length,
+      excerpts,
     },
     descriptionAccuracy:
       accuracyScore === null
         ? null
         : {
-            score: accuracyScore as 1 | 2 | 3 | 4 | 5,
+            score: accuracyScore,
             reasoning: ACCURACY_REASONS[accuracyScore],
           },
     ownedCitation: { cited: ownedUrls.length > 0, urls: ownedUrls },
     competitivePosition: {
-      othersPresent: othersCount > 0,
+      othersPresent,
       othersCount,
       // A brand that was never named cannot hold a rank. Keeping these two in
       // step matters: a rank on an unmentioned brand is exactly the kind of
       // plausible number that reads as real in the dashboard.
-      brandRank:
-        mentioned && othersCount > 0
-          ? (rng.int(1, 3) as 1 | 2 | 3)
-          : "not_ranked",
+      brandRank,
       competitors,
     },
-    mentionHypothesis: mentioned ? null : rng.pick(ABSENCE_HYPOTHESES),
+    mentionHypothesis: mentioned
+      ? null
+      : (book.take(ABSENCE_HYPOTHESES[kind], "", rng) ??
+        ABSENCE_HYPOTHESES[kind][0]),
     analyzedAt: stampAt(runDate, ANALYSIS_HOUR_UTC, index),
     judgeModel: spec.judgeModel.model,
     judgeTokens: {

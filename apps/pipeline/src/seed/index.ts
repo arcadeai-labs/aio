@@ -5,9 +5,9 @@
 // This file owns every impure step (reading the prompt CSV, reading the
 // analytics config, writing files) so `scenario.ts` can own none of them.
 //
-//   bun run seed                       two weeks, the default seed
+//   bun run seed                       fifteen weeks, the default seed
 //   SEED=another bun run seed          a different corpus
-//   SEED_WEEKS=6 bun run seed          more history
+//   SEED_WEEKS=6 bun run seed          a shorter series
 //   SEED_ANCHOR_DATE=2026-08-31 bun run seed
 //
 // The corpus is synthetic and is not marked as such — a dashboard fed by it is
@@ -26,7 +26,7 @@ import { createRng } from "./rng.js";
 import { type WorldSpec, buildCorpus } from "./scenario.js";
 
 const DEFAULT_SEED = "aio-tracer";
-const DEFAULT_WEEKS = 2;
+const DEFAULT_WEEKS = 15;
 /**
  * A fixed date, not "today": a corpus whose dates depend on when it ran is not
  * reproducible. Runs land on this date and multiples of 7 days before it.

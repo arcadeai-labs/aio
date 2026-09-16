@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import type { BrandConfig } from "@aio/core";
 import { createRng } from "../src/seed/rng.js";
 import {
@@ -372,36 +372,72 @@ describe("buildCorpus — verdict coherence", () => {
   });
 });
 
-describe("scenario purity", () => {
-  // AC7. The determinism tests above prove the behaviour; this pins the reason,
-  // so a later change that reaches for the filesystem or the clock fails here
-  // instead of quietly making the corpus unreproducible.
-  const raw = readFileSync(
-    new URL("../src/seed/scenario.ts", import.meta.url),
-    "utf-8",
-  );
+describe("seed purity", () => {
+  // AC7/AC9. The determinism tests above prove the behaviour; this pins the
+  // reason, so a later change that reaches for the filesystem or the clock
+  // fails here instead of quietly making the corpus unreproducible.
+  //
+  // One stray `Math.random` introduced while tuning the world model would break
+  // reproducibility while leaving every *property* test green — the properties
+  // hold for any plausible world. This is the check that stands between the
+  // corpus being an artefact and being a coincidence, so it covers the whole
+  // pure core, not just the file that happened to need it first.
+  const PURE_MODULES = ["scenario.ts", "world.ts", "prose.ts", "rng.ts"];
+  /** Whatever a pure module may import. Nothing here reaches the outside world. */
+  const ALLOWED_IMPORTS = new Set([
+    "@aio/core",
+    "../types/config.js",
+    "./rng.js",
+    "./world.js",
+    "./prose.js",
+  ]);
 
-  // Strip comments first — the module's own header names the things it promises
+  // Strip comments first — the modules' own headers name the things they promise
   // not to do, and a scan that cannot tell code from prose would fail on the
   // promise rather than on a breach of it.
-  const code = raw
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .filter((line) => !line.trimStart().startsWith("//"))
-    .join("\n");
+  const sourceOf = (file: string) =>
+    readFileSync(new URL(`../src/seed/${file}`, import.meta.url), "utf-8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("//"))
+      .join("\n");
 
-  test("imports nothing from node:fs, node:path or a network client", () => {
-    const specifiers = [...code.matchAll(/from\s+"([^"]+)"/g)]
-      .map((m) => m[1])
-      .sort();
+  test.each(PURE_MODULES)(
+    "%s imports nothing from node:fs, node:path or a network client",
+    (file) => {
+      const code = sourceOf(file);
+      for (const [, specifier] of code.matchAll(/from\s+"([^"]+)"/g)) {
+        expect(ALLOWED_IMPORTS.has(specifier)).toBe(true);
+      }
+      expect(code).not.toMatch(/\brequire\s*\(/);
+      expect(code).not.toMatch(/\bimport\s*\(/);
+    },
+  );
 
-    expect(specifiers).toEqual(["../types/config.js", "./rng.js", "@aio/core"]);
-    expect(code).not.toMatch(/\brequire\s*\(/);
-    expect(code).not.toMatch(/\bimport\s*\(/);
-  });
+  test.each(PURE_MODULES)(
+    "%s references neither Date.now() nor Math.random",
+    (file) => {
+      const code = sourceOf(file);
+      expect(code).not.toContain("Date.now");
+      expect(code).not.toContain("Math.random");
+    },
+  );
 
-  test("references neither Date.now() nor Math.random", () => {
-    expect(code).not.toContain("Date.now");
-    expect(code).not.toContain("Math.random");
+  test("no file anywhere under seed/ reaches for Math.random", () => {
+    // index.ts and emit.ts are allowed their filesystem access — they exist to
+    // do the I/O the pure core refuses. Neither is allowed a second source of
+    // variation: a `Math.random()` there would be just as fatal to
+    // reproducibility and would sit outside the checks above.
+    const files = readdirSync(new URL("../src/seed/", import.meta.url)).filter(
+      (f) => f.endsWith(".ts"),
+    );
+    expect(files.length).toBeGreaterThanOrEqual(PURE_MODULES.length);
+    for (const file of files) {
+      const code = sourceOf(file);
+      expect({ file, hit: code.includes("Math.random") }).toEqual({
+        file,
+        hit: false,
+      });
+    }
   });
 });
