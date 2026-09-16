@@ -14,6 +14,11 @@ import { LinePath } from "@visx/shape";
 import { useTooltip, useTooltipInPortal } from "@visx/tooltip";
 import { motion, useReducedMotion } from "framer-motion";
 import { useCallback } from "react";
+import {
+  DIM_STROKE_WIDTH,
+  SERIES_STROKE_WIDTH,
+  hasDrawableSeries,
+} from "../lib/trend-chart-theme";
 import { tooltipRows } from "../lib/trend-chart-view";
 
 export interface TrendSeries {
@@ -36,7 +41,11 @@ const MARGIN = { top: 12, right: 16, bottom: 28, left: 48 };
 // properties, so the values are inlined here in sync with styles.css.
 const GRID = "#1d1f23";
 const AXIS_TEXT = "#8a8f98";
-const DIM_LINE = "#2a2d33";
+// The context field behind the highlighted series. Lifted from #2a2d33 (1.44:1
+// against the surface — below the threshold at which a stroke registers at all)
+// to 1.88:1. Still far below the 7:1 floor every highlighted series clears, so
+// the field stays unambiguously recessive; it is now merely visible.
+const DIM_LINE = "#3a3f47";
 const HALO = "#08090a";
 /** Tooltip rows are capped so a 30-competitor SoV chart stays readable. */
 const TOOLTIP_ROWS = 12;
@@ -160,6 +169,11 @@ function TrendChartInner({
   const dim = series.filter((s) => !s.highlighted);
   const hl = series.filter((s) => s.highlighted);
   const idx = tooltipOpen && tooltipData ? tooltipData.index : -1;
+  // A chart with nothing to draw says so, rather than rendering the same bare
+  // axes a populated-but-illegible chart used to render (issue #25). On this
+  // project "no data" and "data I cannot see" looking identical is the
+  // characteristic failure, so the difference is stated, not left to the eye.
+  const empty = !hasDrawableSeries(series);
 
   const data = (s: TrendSeries): Datum[] => s.values.map((v, i) => ({ i, v }));
   const defined = (d: Datum) => d.v != null;
@@ -234,7 +248,7 @@ function TrendChartInner({
               x={getX}
               y={getY}
               stroke={DIM_LINE}
-              strokeWidth={1}
+              strokeWidth={DIM_STROKE_WIDTH}
               opacity={0.7}
             />
           ))}
@@ -255,7 +269,7 @@ function TrendChartInner({
                   d={path(data(s)) || ""}
                   fill="none"
                   stroke={s.color}
-                  strokeWidth={2}
+                  strokeWidth={SERIES_STROKE_WIDTH}
                   strokeLinejoin="round"
                   strokeLinecap="round"
                   initial={reduceMotion ? false : { pathLength: 0 }}
@@ -273,22 +287,36 @@ function TrendChartInner({
                   key={s.label}
                   cx={xScale(idx)}
                   cy={yScale(v)}
-                  r={3}
+                  r={4}
                   fill={s.color}
                   stroke={HALO}
-                  strokeWidth={1}
+                  strokeWidth={1.5}
                 />
               );
             })}
-          <rect
-            x={0}
-            y={0}
-            width={innerW}
-            height={innerH}
-            fill="transparent"
-            onMouseMove={handleMove}
-            onMouseLeave={hideTooltip}
-          />
+          {empty && (
+            <text
+              x={innerW / 2}
+              y={innerH / 2}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fill={AXIS_TEXT}
+              fontSize={12}
+            >
+              No data for this selection
+            </text>
+          )}
+          {!empty && (
+            <rect
+              x={0}
+              y={0}
+              width={innerW}
+              height={innerH}
+              fill="transparent"
+              onMouseMove={handleMove}
+              onMouseLeave={hideTooltip}
+            />
+          )}
         </Group>
       </svg>
       {tooltipOpen && idx >= 0 && (

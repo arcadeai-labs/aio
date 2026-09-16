@@ -33,7 +33,19 @@ export const RANK_COLOR: Record<BrandRankKey, string> = {
 };
 
 // Categorical palette for the highlighted share-of-voice lines (top competitors).
-// Distinct hues that hold up on the near-black surface.
+// Chart-only: nothing else renders from this list, so its values answer to
+// traceability rather than to the bar styling.
+//
+// Every slot clears 7:1 against the near-black surface and is at least 20 ΔE
+// from every other slot — both asserted in trend-chart-theme.test.ts, because
+// this is a list a future contributor will extend, and two series that read as
+// one line where they cross is the same "plausible but wrong" failure as a line
+// nobody can see (issue #25).
+//
+// Slot 8 was #facc15, which measured 9.6 ΔE from slot 2's #fbbf24 — with nine or
+// more competitors highlighted the two were effectively the same yellow. The
+// shipped corpus draws six, so nothing on screen today collided; it was waiting
+// for a wider brand set.
 export const SOV_PALETTE = [
   "#4ade80",
   "#60a5fa",
@@ -43,7 +55,7 @@ export const SOV_PALETTE = [
   "#a78bfa",
   "#fb923c",
   "#38bdf8",
-  "#facc15",
+  "#e879f9",
   "#f87171",
 ];
 
