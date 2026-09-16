@@ -47,9 +47,16 @@ import type { TargetEntry } from "./types/config.js";
  *                    about this row, and its 16/16 is precisely the evidence
  *                    that misleads. claude-sonnet-4-6 is the newest id with
  *                    positive evidence behind it here — the baseline run had it
- *                    at 16/16 on this same SDK version. Moving this row forward
- *                    needs a newer @anthropic-ai/claude-agent-sdk, not a newer
- *                    string, and that dependency bump is its own change.
+ *                    at 16/16 on this same SDK version.
+ *
+ *                    This is a dependency bound, not a wrong id: the ceiling is
+ *                    `"@anthropic-ai/claude-agent-sdk": "^0.2.50"` in
+ *                    apps/pipeline/package.json, and ^0.2.x cannot reach a
+ *                    build that knows Claude 5. Moving this row forward means
+ *                    widening that range, which is tracked in #17 and is its
+ *                    own change with its own verification — not a string edit
+ *                    here. Re-sync this row with the one above only after #17
+ *                    lands and a credentialed run proves it.
  *
  *   openrouter       openai/gpt-5.2:online → openai/gpt-5.6-terra:online
  *                    Kept in lockstep with the `openai` row on purpose: the two

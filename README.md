@@ -78,7 +78,8 @@ not call the Messages API — it drives the Claude Code CLI that
 `@anthropic-ai/claude-agent-sdk` bundles, which is versioned separately and
 lags. A model id the API serves is not automatically one that subprocess can
 run, so the two rows in `targets.ts` are pinned independently and a test asserts
-they differ. Moving the agent row forward means bumping the SDK, not the string.
+they differ. Moving the agent row forward means widening the SDK version range,
+not editing the string.
 
 **It also will not run inside a Claude Code session.** The CLI refuses to launch
 when `CLAUDECODE` is set, so that one target returns nothing for the whole run

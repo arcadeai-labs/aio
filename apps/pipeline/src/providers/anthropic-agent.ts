@@ -141,7 +141,8 @@ export class AnthropicAgentProvider extends BaseProvider {
   // the binary contains no Claude 5 model string, and the newest id it knows
   // per tier is the list below. Keep it sourced from the bundled CLI, not from
   // Anthropic's model docs — a model the API serves is not automatically a
-  // model this subprocess can run.
+  // model this subprocess can run. The ceiling here is the `^0.2.50` range in
+  // package.json; widening it is #17.
   readonly supportedModels = [
     "claude-sonnet-4-6",
     "claude-opus-4-6",
