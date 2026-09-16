@@ -220,8 +220,31 @@ cat results/results-*.jsonl | jq 'select(.metadata.provider == "anthropic") | .r
 ## Scheduling
 
 `.github/workflows/weekly-run.yml` runs the pipeline every Monday at 09:00 UTC
-and uploads results as build artifacts. It is opt-in: it does nothing useful
-until you add your provider keys as repository secrets.
+and uploads `results/` as a build artifact. It is opt-in: with no provider-key
+secrets set it fails immediately with a message naming the secrets to add,
+rather than spending half an hour writing a file in which every row is an
+error.
+
+**It stops there, deliberately.** It does not judge and does not ingest, so
+those two steps stay yours:
+
+```bash
+gh run download <run-id> -n results-<run-id> -D results/
+bun run analyze            # needs OPENAI_API_KEY + analytics.config.json
+docker compose up -d db
+bun run ingest             # needs DATABASE_URL
+```
+
+Each run's job summary prints those commands with the run id filled in.
+
+The chain stops because the second half is local by design. `analyze` reads
+`analytics.config.json` — your brand, aliases, owned domains and competitors —
+which is gitignored, so CI has no copy; a config that has drifted out of sync
+scores every answer "not mentioned" and draws a believable 0%, which is
+indistinguishable from a genuine zero. `ingest` writes to a Postgres that
+CI cannot reach, and requiring a hosted database would break the promise that
+a fork runs entirely on your own machine. The reasoning is repeated in full at
+the top of the workflow file.
 
 ## Development
 
