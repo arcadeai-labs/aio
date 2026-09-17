@@ -190,13 +190,43 @@ const offenders = (frames: Frame[]) =>
     .filter((f) => f.current.length !== 1)
     .map((f) => `t=${f.t}ms current=[${f.current.join(", ")}]`);
 
+/**
+ * The floor every sample must clear before it is judged.
+ *
+ * Each invariant below is an assertion *over* the sampled frames, and an empty
+ * sample satisfies all of them vacuously: `offenders([])` is `[]`, and `[]`
+ * equals `[]`. So a sampler that returned nothing — a click that missed, a
+ * window that closed early, a harness that stopped ticking — would turn the
+ * three assertions this whole change exists for green while checking nothing.
+ * That is this repo's signature defect, and it does not announce itself.
+ *
+ * The guard therefore lives in each test that judges a sample, not once in the
+ * control test: a control test can be skipped, deleted, or fail for its own
+ * reasons, and these three would still pass over zero frames. Every assertion
+ * has to be able to fail on its own.
+ *
+ * 20 because that is the floor the control test has run green on CI since this
+ * suite landed — the only frame-rate evidence about the CI box I actually have,
+ * rather than a number extrapolated from this laptop. A quiet run here samples
+ * 59–66 frames in the 600ms window, so this leaves roughly 3x of headroom for a
+ * loaded machine while still catching a sample that collapsed to a handful.
+ */
+const MIN_FRAMES = 20;
+
+/** Asserts the sample is substantial, then hands it back for judging. */
+function sampled(frames: Frame[]): Frame[] {
+  expect(frames.length).toBeGreaterThanOrEqual(MIN_FRAMES);
+  return frames;
+}
+
 describe("the harness can see the window this bug lives in (control)", () => {
   test("the control leads the data across a segment switch", async () => {
     // If this stops holding, the loader is resolving before anything can be
     // sampled and every assertion below is vacuous.
     const host = await mount();
-    const frames = await sampleAcrossClick(host, ".segctl__opt", "Branded");
-    expect(frames.length).toBeGreaterThan(20);
+    const frames = sampled(
+      await sampleAcrossClick(host, ".segctl__opt", "Branded"),
+    );
 
     const leading = frames.filter(
       (f) => f.current[0] === "Branded" && f.loaded === "scoreboard:global",
@@ -209,7 +239,9 @@ describe("the harness can see the window this bug lives in (control)", () => {
 describe("exactly one option reads as current, in every frame", () => {
   test("the scoreboard's segment control", async () => {
     const host = await mount();
-    const frames = await sampleAcrossClick(host, ".segctl__opt", "Branded");
+    const frames = sampled(
+      await sampleAcrossClick(host, ".segctl__opt", "Branded"),
+    );
     expect(offenders(frames)).toEqual([]);
     expect(frames[frames.length - 1]?.current).toEqual(["Branded"]);
   });
@@ -217,14 +249,18 @@ describe("exactly one option reads as current, in every frame", () => {
   test("the Cited view's segment pills", async () => {
     const host = await mount();
     await sampleAcrossClick(host, ".shell__navlink", "Cited", 400);
-    const frames = await sampleAcrossClick(host, ".comp__seg", "Unbranded");
+    const frames = sampled(
+      await sampleAcrossClick(host, ".comp__seg", "Unbranded"),
+    );
     expect(offenders(frames)).toEqual([]);
     expect(frames[frames.length - 1]?.current).toEqual(["Unbranded"]);
   });
 
   test("the nav's section links", async () => {
     const host = await mount();
-    const frames = await sampleAcrossClick(host, ".shell__navlink", "Cited");
+    const frames = sampled(
+      await sampleAcrossClick(host, ".shell__navlink", "Cited"),
+    );
     expect(offenders(frames)).toEqual([]);
     expect(frames[frames.length - 1]?.current).toEqual(["Cited"]);
   });
