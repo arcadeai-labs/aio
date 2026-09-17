@@ -1,0 +1,250 @@
+{
+  "label": "baseline-raw",
+  "url": "https://api.perplexity.ai/chat/completions",
+  "status": 200,
+  "requestBody": {
+    "model": "sonar-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is Taskwell and who is it for?"
+      }
+    ]
+  },
+  "responseBody": {
+    "choices": [
+      {
+        "delta": {
+          "content": "",
+          "role": "assistant"
+        },
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "**Taskwell** is not a single, universal product name; the search results show several different companies using the name. The most relevant match to your wording is the **agentic AI / business automation** product from Troublesome, which says Taskwell “turns AI into an operational teammate” that connects to your software, follows procedures, and moves work between systems.[1][4]\n\nWho it’s for depends on which Taskwell you mean:\n\n- The **Troublesome Taskwell** platform is for **owner-operated businesses and other teams** that want AI to run repetitive operational work without adding headcount.[4]\n- The **Taskwell productivity app** is for **ADHD adults** who “freeze, drift, and abandon tasks,” helping them start and restart work more easily.[2][3]\n- Other Taskwell-branded businesses in the results include a **UK small-business automation** service, a **productivity brand for creators/professionals/students**, a **property/home services** company, and an **LED lighting** company in Australia.[5][9][13][17][18]\n\nIf you want, I can narrow this down to the specific Taskwell you meant and summarize its features, pricing, or target users.",
+          "role": "assistant"
+        }
+      }
+    ],
+    "citations": [
+      "https://www.troublesome.ai/products",
+      "https://gettaskwell.com/support.html",
+      "https://gettaskwell.com/",
+      "https://www.troublesome.ai/",
+      "https://taskwell.uk/",
+      "https://taskwellapp.com/",
+      "https://www.linkedin.com/company/taskwell-australia",
+      "https://www.troublesome.ai/taskwellatwork",
+      "https://sites.google.com/view/taskwellhq/home",
+      "https://www.linkedin.com/company/taskwellservices",
+      "https://www.zoominfo.com/c/taskwell-australia-pty-ltd/372108473",
+      "https://www.taskwell-inc.com/first.php",
+      "https://www.linkedin.com/company/taskwellofficial",
+      "https://governwell.net/module/taskwell",
+      "https://hipages.com.au/connect/taskwell",
+      "https://doc.irasia.com/listco/hk/tiananmedicare/announcement/a070514.pdf",
+      "http://www.taskwell.com.au/about.aspx?page=about",
+      "https://www.taskwell.com.au/",
+      "https://taskwellgroup.com/",
+      "https://coconala.com/users/388750"
+    ],
+    "created": 1789658660,
+    "id": "006aea01-8fa6-4133-9637-6fc3b236e7e3",
+    "model": "sonar-pro",
+    "object": "chat.completion",
+    "search_results": [
+      {
+        "date": null,
+        "last_updated": "2026-09-12",
+        "place_metadata": null,
+        "snippet": "Taskwell turns AI into an operational teammate — one that connects to your software,\nfollows your procedures, and asks before it does anything that matters.\n...\nTaskwell sits at the center of the tools you already run and moves work between them.\n...\nTaskwell is the single intelligence that orchestr...",
+        "source": "web",
+        "title": "The Taskwell platform | Troublesome",
+        "url": "https://www.troublesome.ai/products"
+      },
+      {
+        "date": "2026-07-30",
+        "last_updated": "2026-09-16",
+        "place_metadata": null,
+        "snippet": "Taskwell – Next Start is a productivity app for ADHD adults who freeze, drift,\nand abandon tasks — each session can update tomorrow’s next start.\n...\n*Taskwell is a productivity tool for starting and restarting work.\nIt is not\nmedical care, diagnosis, or treatment for ADHD or any condition.*\n...\nAft...",
+        "source": "web",
+        "title": "Support - Taskwell",
+        "url": "https://gettaskwell.com/support.html"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-09-12",
+        "place_metadata": null,
+        "snippet": "Taskwell shrinks the cost of starting and restarting.\nEach session updates tomorrow’s next start — from how hard it felt, why you stopped, and what was in the way.\n...\nName why you stopped.\nTaskwell turns early exits into a clearer, shorter restart instead of an all-or-nothing day.",
+        "source": "web",
+        "title": "Taskwell — Start clearer. Come back sooner.",
+        "url": "https://gettaskwell.com/"
+      },
+      {
+        "date": "2024-07-30",
+        "last_updated": "2026-06-15",
+        "place_metadata": null,
+        "snippet": "## TASKWELL is agentic AI for owner-operated businesses... and everybody else\n01\n...\nIt runs the vital, repetitive work that quietly drains your hours, so your days go back to what actually needs you.\n...\nTaskwell does the work you'd otherwise hire for — accurately, around the clock, without adding ...",
+        "source": "web",
+        "title": "Troublesome Inc. | Taskwell Agentic AI",
+        "url": "https://www.troublesome.ai/"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-09-16",
+        "place_metadata": null,
+        "snippet": "# Grow without hiring.\nAutomate the work that's eating your day.\nWe automate the repetitive work eating up your evenings, so you can\nspend your time on the work that actually makes you money.",
+        "source": "web",
+        "title": "Taskwell — Business Automation for UK Small Businesses",
+        "url": "https://taskwell.uk/"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-08-01",
+        "place_metadata": null,
+        "snippet": "TaskWell is developed independently, not by a large team — built to solve a real problem: managing tasks and medications well, in one place, without compromise on either.",
+        "source": "web",
+        "title": "TaskWell — Tasks & Wellness, beautifully done.",
+        "url": "https://taskwellapp.com/"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-08-31",
+        "place_metadata": null,
+        "snippet": "As one of the world’s leaders in LED Lighting, Taskwell is driving the switch to energy-efficient solutions.\nWith worldwide electrical lighting using 15 percent of all electricity, the use of energy-efficient lighting will significantly reduce energy consumption around the world and thereby cut harm...",
+        "source": "web",
+        "title": "Taskwell Australia",
+        "url": "https://www.linkedin.com/company/taskwell-australia"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-09-16",
+        "place_metadata": null,
+        "snippet": "Taskwell's forensic methodology on Troublesome's own books — phantom integrations, payroll double-credits, first-ever zero-variance reconciliation.",
+        "source": "web",
+        "title": "Taskwell @ Work",
+        "url": "https://www.troublesome.ai/taskwellatwork"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-08-07",
+        "place_metadata": null,
+        "snippet": "Taskwell HQ builds clean, reusable systems to help creators, professionals, and students simplify their workflow, focus on what matters, and stay consistent.\n...\nTaskwell HQ is a modern productivity brand built to simplify how creators, professionals, and students work.\nWe design clean, reusable sys...",
+        "source": "web",
+        "title": "Taskwell HQ (Official Site)",
+        "url": "https://sites.google.com/view/taskwellhq/home"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-08-31",
+        "place_metadata": null,
+        "snippet": "TaskWell helps small businesses simplify their operations with clear, customized systems that save time and reduce stress.\nWhether you’re managing staff schedules, tracking inventory, or just trying to stay organized, TaskWell builds practical solutions using modern tools — without the tech overwhel...",
+        "source": "web",
+        "title": "TaskWell | Business Consulting and Services",
+        "url": "https://www.linkedin.com/company/taskwellservices"
+      },
+      {
+        "date": "2023-01-01",
+        "last_updated": "2025-03-11",
+        "place_metadata": null,
+        "snippet": "Furniture · Australia · <25 Employees\n...\n### Headquarterssutite312 level 3,14 Lexington Dr, Bella Vista,...\n### Phone Number+61 288832760\n### Websitewww.taskwell.com.au\n...\n## Who is Taskwell AustraliaAs part of the Dowin Global group of companies, with over two decades of LED lighting experience, ...",
+        "source": "web",
+        "title": "Taskwell Australia - Overview, News & Similar companies | ZoomInfo.com",
+        "url": "https://www.zoominfo.com/c/taskwell-australia-pty-ltd/372108473"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-07-01",
+        "place_metadata": null,
+        "snippet": "たすくうぇるは有料老人ホームへのご入居相談を無料で承っております。",
+        "source": "web",
+        "title": "はじめての方へ｜老人ホーム紹介サービス【taskwell】民間介護施設 ...",
+        "url": "https://www.taskwell-inc.com/first.php"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-09-01",
+        "place_metadata": null,
+        "snippet": "taskwell is a trusted local provider of property and home services, founded by hugh clark in 2023.\nwe serve property management companies and homeowners alike, offering a full range of services including handyman work, lawn care, snow removal, junk removal, pressure washing, and janitorial cleaning....",
+        "source": "web",
+        "title": "TaskWell | Facilities Services",
+        "url": "https://www.linkedin.com/company/taskwellofficial"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-09-16",
+        "place_metadata": null,
+        "snippet": "TaskWell™ includes customizable sample committee charters for the following hospital and health system board committees:\n- Executive Committee\n- Strategic Planning Committee\n- Finance Committee\n...\n- Community Relations Committee\n- Ethics Committee",
+        "source": "web",
+        "title": "TaskWell - governWell.net",
+        "url": "https://governwell.net/module/taskwell"
+      },
+      {
+        "date": "2026-09-12",
+        "last_updated": "2026-09-12",
+        "place_metadata": null,
+        "snippet": "Bella Vista NSW 2153\n...\n## Taskwell is a first-class LED Lighting Solution & service provider\n### ABOUT\n***Taskwell Australia PTY Ltd** * is an Australian owned and operated LED lighting provider.\nTaskwell provides a complete service for all your lighting requirements, from design & planning, throu...",
+        "source": "web",
+        "title": "Taskwell Led Lighting Australia - Bella Vista NSW 2153",
+        "url": "https://hipages.com.au/connect/taskwell"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-01-30",
+        "place_metadata": null,
+        "snippet": "On 9th May, 2007, Taskwell (an indirect wholly-owned subsidiary of the Company) and SHKIS, as placing agent for Tian An China Hotel and Oasis Star, entered into the Agreement, pursuant to which\nTaskwell has conditionally agreed to acquire, and SHKIS has conditionally agreed to place as placing agent...",
+        "source": "web",
+        "title": "COL Capital Limited",
+        "url": "https://doc.irasia.com/listco/hk/tiananmedicare/announcement/a070514.pdf"
+      },
+      {
+        "date": "2025-06-10",
+        "last_updated": "2025-11-05",
+        "place_metadata": null,
+        "snippet": "Established in 2013, Taskwell Australia Pty Ltd is a reputable company specializing in providing specialized energy-efficient lighting products for urban buildings, residential properties, and the transportation industry.\nOur office is located at B211, 20 Lexington Drive, Bella Vista, NSW.\n...\nBeyon...",
+        "source": "web",
+        "title": "Company Profile _ Taskwell Australia Pty Ltd",
+        "url": "http://www.taskwell.com.au/about.aspx?page=about"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-08-07",
+        "place_metadata": null,
+        "snippet": "We specialize in providing professional energy-saving lighting products for the construction and transportation industries.",
+        "source": "web",
+        "title": "Taskwell Australia Pty Ltd",
+        "url": "https://www.taskwell.com.au/"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-08-07",
+        "place_metadata": null,
+        "snippet": "StorageDesk AI by Taskwell Group\n# Turn Missed Calls Into Move-Ins\nStorageDesk AI answers every phone call, texts renters a reservation link, and fills your empty units — even after hours.\n...\nA complete AI phone system built specifically for self-storage\n...\n## Who It's For\nBuilt for storage operat...",
+        "source": "web",
+        "title": "TaskWell Group | AI-Powered Automation for Professional ...",
+        "url": "https://taskwellgroup.com/"
+      },
+      {
+        "date": null,
+        "last_updated": "2026-09-15",
+        "place_metadata": null,
+        "snippet": "事業成長とCV獲得に強いSEOライター\n男性\n...\n## 【インボイス対応】歴7年のSEO知見×CV導線設計で、企業様の課題を解決する高品質記事を提供します。\n...\n事業の成長とCV（コンバージョン）をコンテンツで解決するSEOライター、Taskwellです。\nココナラをメインに、主に法人様のSEO戦略に貢献してまいりました。",
+        "source": "web",
+        "title": "Taskwellさん(事業成長とCV獲得に強いSEOライター)のプロフィール | ココナラ",
+        "url": "https://coconala.com/users/388750"
+      }
+    ],
+    "usage": {
+      "completion_tokens": 259,
+      "cost": {
+        "input_tokens_cost": 0.00003,
+        "output_tokens_cost": 0.00389,
+        "request_cost": 0.006,
+        "total_cost": 0.00992
+      },
+      "prompt_tokens": 10,
+      "search_context_size": "low",
+      "total_tokens": 269
+    }
+  }
+}

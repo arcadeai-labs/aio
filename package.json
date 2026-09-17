@@ -2,7 +2,10 @@
   "name": "aio",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "start": "bun run apps/pipeline/src/index.ts",
     "seed": "bun run apps/pipeline/src/seed/index.ts",

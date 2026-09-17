@@ -65,12 +65,36 @@ import type { TargetEntry } from "./types/config.js";
  *                    only means something if the model matches. Both ids were
  *                    confirmed present in https://openrouter.ai/api/v1/models.
  *
- *   perplexity       sonar-pro — unchanged, still current.
- *                    NOTE: Perplexity's docs carry "Sonar Chat Completions is
- *                    now Agent API. Sonar will be supported until September 27,
- *                    2026." This provider talks to /chat/completions, and the
- *                    Agent API is a different request shape — moving to it is a
- *                    provider rewrite, not a model-id change. Tracked separately.
+ *   perplexity       sonar-pro → perplexity/sonar  (MIGRATED, #16)
+ *                    Not a version bump. The chat-completions endpoint this
+ *                    provider used to talk to stops being served 2026-09-27
+ *                    ("Sonar Chat Completions is now Agent API. Sonar will be
+ *                    supported until September 27, 2026"), so the provider was
+ *                    rewritten onto POST /v1/agent — different request shape,
+ *                    different response shape, opt-in web search. See
+ *                    providers/perplexity.ts for why each mapping is what it is.
+ *
+ *                    sonar-pro is GONE, not renamed. Confirmed twice on
+ *                    2026-09-17 against the live API: absent from the 48 ids
+ *                    served by GET /v1/models, and rejected by direct probe
+ *                    (HTTP 400 validation failed: model "sonar-pro" is not
+ *                    supported). The same probe rejected perplexity/sonar-pro.
+ *
+ *                    perplexity/sonar is the BASE tier. The Agent API has no
+ *                    -pro, so this row now measures one tier below what it did,
+ *                    and answers get shorter and cheaper: on the captured
+ *                    comparison prompt, 1315 → 867 chars and $0.00992 →
+ *                    $0.00397. That is a real change in what is being measured,
+ *                    and it is not a cost of this particular choice — no
+ *                    available id preserves the -pro tier, because none exists.
+ *
+ *                    This ends the perplexity/sonar-pro week-over-week series
+ *                    and starts perplexity/perplexity/sonar — the run summary
+ *                    prints provider/model and the model now contains a slash
+ *                    of its own. Deliberate: the dashboard renders a gap rather
+ *                    than a zero, and claiming one continuous line across an
+ *                    endpoint change and a tier change would be the dashboard
+ *                    asserting something untrue.
  *
  *   exa              synthesisModel gpt-5.4-mini → gpt-5.6-luna
  *                    Same generation bump as the `openai` row, at the
@@ -96,7 +120,7 @@ export const DEFAULT_TARGETS: TargetEntry[] = [
   { provider: "anthropic", model: "claude-sonnet-5" },
   { provider: "anthropic-agent", model: "claude-sonnet-4-6" },
   { provider: "openrouter", model: "openai/gpt-5.6-terra:online" },
-  { provider: "perplexity", model: "sonar-pro" },
+  { provider: "perplexity", model: "perplexity/sonar" },
   {
     provider: "exa",
     model: "exa-auto",

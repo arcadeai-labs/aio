@@ -141,7 +141,7 @@ const SEARCH_TOOLS: Record<string, string> = {
   anthropic: "web_search_20250305",
   "anthropic-agent": "claude-agent-sdk-websearch",
   openrouter: "openrouter-online",
-  perplexity: "perplexity-sonar",
+  perplexity: "perplexity-agent",
   exa: "exa-search",
   codex: "codex-web-search",
 };
@@ -198,9 +198,17 @@ function providerMetaFor(
  * a reader is most likely to assume are always filled in.
  *
  * `queryText` is `string | null` because some providers never expose the query
- * they ran — Perplexity and OpenRouter return annotations with no query, and
- * both write `queryText: null` and `rawInput: null` for a single aggregate
- * call. The rest record one call per query. Both arms are in the corpus.
+ * they ran — OpenRouter returns annotations with no query and writes
+ * `queryText: null` and `rawInput: null` for a single aggregate call. The rest
+ * record one call per query. Both arms are in the corpus.
+ *
+ * Perplexity is a third shape and used to be on the null arm. Since #16 moved
+ * it to the Agent API it reports the searches it ran
+ * (`output[type=search_results].queries`), so it now writes one aggregate call
+ * that *does* carry a query — `queryText` plus a `rawInput.queries` array. Kept
+ * faithful because the whole point of the seeded corpus is that synthetic rows
+ * exercise the same shapes real ones do; leaving Perplexity on the null arm
+ * would model a provider that no longer exists.
  */
 function rawCalls(
   provider: string,
@@ -209,7 +217,7 @@ function rawCalls(
 ): RawSearchCall[] {
   const found = sources.map((s) => ({ url: s.url, title: s.title }));
 
-  if (provider === "perplexity" || provider === "openrouter") {
+  if (provider === "openrouter") {
     if (queries.length === 0) return [];
     return [
       {
@@ -218,6 +226,21 @@ function rawCalls(
         queryText: null,
         rawInput: null,
         rawOutput: { citations: found.map((f) => f.url), results: found },
+      },
+    ];
+  }
+
+  // One aggregate call that names its queries — see `providers/perplexity.ts`,
+  // which builds exactly this from each `search_results` output item.
+  if (provider === "perplexity") {
+    if (queries.length === 0) return [];
+    return [
+      {
+        callIndex: 0,
+        timestamp: queries[0].timestamp,
+        queryText: queries[0].query,
+        rawInput: { queries: queries.map((q) => q.query) },
+        rawOutput: { results: found },
       },
     ];
   }

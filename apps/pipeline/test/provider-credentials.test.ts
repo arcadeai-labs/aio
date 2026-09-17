@@ -92,7 +92,7 @@ function captureFetch(body: unknown = {}): CapturedRequest[] {
 
 const INPUT = {
   prompt: "What is Taskwell and who is it for?",
-  model: "sonar-pro",
+  model: "perplexity/sonar",
   runId: "test-run",
 };
 
@@ -192,15 +192,28 @@ describe("a provider whose key is present uses its own key", () => {
   test("perplexity authenticates api.perplexity.ai with PERPLEXITY_API_KEY", async () => {
     process.env.OPENAI_API_KEY = OPENAI_SENTINEL;
     process.env.PERPLEXITY_API_KEY = PERPLEXITY_SENTINEL;
+    // A minimally valid Agent API response. It has to be valid, not just any
+    // JSON: the provider rejects a response that did not search, so a stub
+    // left over from the chat-completions era would retry three times and this
+    // test would fail for a reason unrelated to credentials.
     const requests = captureFetch({
       id: "x",
-      choices: [{ message: { role: "assistant", content: "hi" } }],
+      status: "completed",
+      output: [
+        {
+          type: "search_results",
+          queries: ["q"],
+          results: [{ url: "https://e.example" }],
+        },
+        { type: "message", content: [{ type: "output_text", text: "hi" }] },
+      ],
     });
 
-    await new PerplexityProvider().run(INPUT);
+    const result = await new PerplexityProvider().run(INPUT);
+    expect(result.error).toBeNull();
 
     expect(requests).toHaveLength(1);
-    expect(requests[0].url).toStartWith("https://api.perplexity.ai");
+    expect(requests[0].url).toBe("https://api.perplexity.ai/v1/agent");
     expect(requests[0].authorization).toContain(PERPLEXITY_SENTINEL);
     expect(requests[0].authorization).not.toContain(OPENAI_SENTINEL);
   });
@@ -239,15 +252,21 @@ describe("the run summary tells the truth about an unset key", () => {
     const summary = summarizeRun(
       [
         { provider: "openai", model: "gpt-5.6-terra" },
-        { provider: "perplexity", model: "sonar-pro" },
+        { provider: "perplexity", model: "perplexity/sonar" },
       ],
       [
         { provider: "openai", model: "gpt-5.6-terra", error: null },
-        { provider: "perplexity", model: "sonar-pro", error: result.error },
+        {
+          provider: "perplexity",
+          model: "perplexity/sonar",
+          error: result.error,
+        },
       ],
     );
 
-    expect(summary.missingCredentialTargets).toEqual(["perplexity/sonar-pro"]);
+    expect(summary.missingCredentialTargets).toEqual([
+      "perplexity/perplexity/sonar",
+    ]);
     expect(summary.failedTargets).toEqual([]);
     // The README promises an unconfigured provider leaves the rest of the run
     // intact. Before the fix this was an HTTP_401 — still credential-shaped, but
