@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to analytics.config.json and replace with your own brand. The values below describe Taskwell, a fictional to-do app, and line up with the seed prompts in prompts/default.csv. A fictional brand scores zero mentions everywhere, so use analytics.config.demo.json if you want a populated dashboard before wiring up your own.",
+  "_comment": "Copy to analytics.config.json. The values below describe Taskwell, a fictional to-do app, and line up with the seed prompts in prompts/default.csv — this is the config `bun run seed` generates against, so copying it unchanged gives you a populated dashboard with no API keys at all. To measure a real brand, put your own brand in here FIRST: Taskwell does not exist, so a credentialed run against this file as shipped returns zero mentions from every provider. That is correct behaviour, not a broken install — but it spends real API credits measuring a brand that isn't there.",
   "_comment_synthetic": "This is the config `bun run seed` generates against, so it ships with \"synthetic\": true and every run ingested under it is marked as invented in the dashboard header. When you edit this file to track your own brand with real provider runs, DELETE the \"synthetic\" line — leaving it would label your measurements as fabricated.",
   "brand": {
     "name": "Taskwell",
