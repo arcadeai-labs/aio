@@ -15,6 +15,7 @@ import { type ReactNode, useEffect } from "react";
 import { AnimatedNumber } from "../components/AnimatedNumber";
 import { Nav } from "../components/Nav";
 import { RunStatusChip } from "../components/RunStatusChip";
+import { SegmentPills } from "../components/SegmentPills";
 import { resolveUser } from "../lib/route-guard";
 import { runHealth } from "../lib/run-health";
 import { fetchScoreboard } from "../lib/scoreboard";
@@ -31,7 +32,7 @@ import {
   pct,
   score,
 } from "../lib/scoreboard-view";
-import { SEGMENTS, SEGMENT_LABEL, toSegment } from "../lib/segments";
+import { SEGMENT_LABEL, toSegment } from "../lib/segments";
 import { fetchSyntheticRuns } from "../lib/synthetic";
 
 // URL state for the scoreboard's composable controls. The segment selector and
@@ -480,31 +481,6 @@ function Coverage({
   );
 }
 
-// Segment selector — re-scopes the whole scoreboard (PRD story #8). Each option
-// is a Link that sets `segment` while preserving every other URL param (run +
-// both toggles) via the search-updater form, so segment composes with run and
-// theme and the choice lands in URL state.
-function SegmentSelector({ segment }: { segment: Segment }) {
-  return (
-    <div className="segctl">
-      {SEGMENTS.map((s) => (
-        <Link
-          key={s}
-          to="/"
-          // biome-ignore lint/suspicious/noExplicitAny: search-updater preserves all params
-          search={(prev: any) => ({ ...prev, segment: s })}
-          className={
-            s === segment ? "segctl__opt segctl__opt--active" : "segctl__opt"
-          }
-          aria-current={s === segment ? "true" : undefined}
-        >
-          {SEGMENT_LABEL[s]}
-        </Link>
-      ))}
-    </div>
-  );
-}
-
 // Per-provider headline breakdown (issue #8) — the pooled headline expanded one
 // level down, scoped to the active segment. Each row is a full headline computed
 // over that provider's slice of the scoped rows; the All count anchors every rate
@@ -782,7 +758,10 @@ function Headline({
             "Earliest ingested run — no prior to compare."
           )}
         </span>
-        <SegmentSelector segment={segment} />
+        {/* Re-scopes the whole scoreboard (PRD story #8). Driven by the URL,
+            not by `scoreboard.segment`, so exactly one pill reads as current in
+            every frame of the switch — see components/SegmentPills (issue #39). */}
+        <SegmentPills to="/" variant="scoreboard" />
       </div>
 
       <div className="score__controls">
