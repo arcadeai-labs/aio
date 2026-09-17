@@ -39,7 +39,8 @@ bun run ingest     # load into Postgres              -> dashboard lights up
 `analytics.config.demo.json` tracks Todoist, a real and widely-written-about
 product, so the first run returns genuine mentions and rankings. When you are
 ready to track your own brand, start from `analytics.config.example.json`
-instead and edit it.
+instead and edit it — and delete its `"synthetic": true` line, which exists to
+mark seeded data and would otherwise label your own measurements as invented.
 
 ### Filling it without API keys
 
@@ -86,9 +87,17 @@ to render a loss, and a loss is the case a reader most needs to be able to read.
 | `SEED_WEEKS` | `15` | How many runs, spaced exactly 7 days apart. |
 | `SEED_ANCHOR_DATE` | `2026-09-14` | Date of the most recent run. Fixed, not "today" — a corpus dated from the clock would not be reproducible. |
 
-**This data is synthetic and nothing in the dashboard says so.** Treat a
-database you have seeded as a scratch database, and `docker compose down -v`
-before you put real runs in it.
+**This data is synthetic, and the dashboard says so.** `analytics.config.example.json`
+— the config the seed generates against — carries `"synthetic": true`. That flag
+is snapshotted with the rest of the config when you ingest, so every seeded run
+is marked in the database, an amber band appears in the dashboard header on every
+page that shows one, and `/runs` tags each seeded week `seeded`. The marker
+cannot be dismissed: a caveat you can close is absent from the screenshot taken
+after you closed it, and the numbers here are invented ones attached to real
+competitor names.
+
+Treat a database you have seeded as a scratch database anyway, and
+`docker compose down -v` before you put real runs in it.
 
 ## How it fits together
 
@@ -239,6 +248,7 @@ Configure it in `analytics.config.json`:
 | `concurrency` | Max concurrent judge calls |
 | `resultsDir` / `outputDir` | Where results are read from and analysis written to |
 | `googleSheet` | Optional; omit entirely to skip the spreadsheet export |
+| `synthetic` | Optional; `true` marks every run ingested under this config as generated rather than measured, and the dashboard renders a permanent marker on it. Omit it for real runs — absent means real, and it is set only in `analytics.config.example.json`, which `bun run seed` uses |
 
 ```bash
 bun run analyze                                  # today's results
