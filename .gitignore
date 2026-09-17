@@ -19,7 +19,6 @@ analytics.config.json
 prompts/*.csv
 prompts/*.ipynb
 !prompts/default.csv
-!prompts/demo.csv
 
 # Google OAuth
 .google-tokens.json

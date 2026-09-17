@@ -57,11 +57,4 @@ describe("isSyntheticConfig — the flagged case", () => {
     ).json();
     expect(isSyntheticConfig(config)).toBe(true);
   });
-
-  test("the demo config tracks a real brand and is not flagged", async () => {
-    const config = await Bun.file(
-      new URL("../../../analytics.config.demo.json", import.meta.url),
-    ).json();
-    expect(isSyntheticConfig(config)).toBe(false);
-  });
 });
