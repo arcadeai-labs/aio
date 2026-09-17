@@ -169,9 +169,17 @@ function formatTimestamp(iso: string): string {
   })} UTC`;
 }
 
-// One headline cell. The value counts up on a run switch (AnimatedNumber); the
-// card itself rises in with a short, staggered delay on mount. `index` orders the
-// stagger so the four cells cascade left-to-right, top-to-bottom.
+// One headline cell. The card rises in with a short, staggered delay on mount;
+// `index` orders the stagger so the four cells cascade left-to-right, top-to-
+// bottom.
+//
+// `snapshot` identifies the scope both halves of the tile describe (issue #23).
+// The figure and the `cohort` caption under it are one claim — "91.7%" means
+// nothing except as the rate of "33 of 36" — so they must change together. The
+// caption is plain React text and swaps with the loader data; passing the same
+// snapshot to AnimatedNumber makes the figure swap in that same commit instead
+// of tweening across the change and printing one segment's rate over another
+// segment's denominator.
 function Metric({
   name,
   value,
@@ -179,6 +187,7 @@ function Metric({
   delta,
   deltaText,
   cohort,
+  snapshot,
   index,
 }: {
   name: string;
@@ -187,6 +196,7 @@ function Metric({
   delta: Delta;
   deltaText: string;
   cohort: string;
+  snapshot: string;
   index: number;
 }) {
   const reduce = useReducedMotion();
@@ -201,7 +211,12 @@ function Metric({
         <span className="metric__name">{name}</span>
         <span className={deltaClass(delta)}>{deltaText}</span>
       </div>
-      <AnimatedNumber className="metric__value" value={value} format={format} />
+      <AnimatedNumber
+        className="metric__value"
+        value={value}
+        format={format}
+        snapshot={snapshot}
+      />
       <p className="metric__cohort">{cohort}</p>
     </motion.div>
   );
@@ -748,6 +763,11 @@ function Headline({
     );
   }
 
+  // The scope every headline figure and every caption below is computed over.
+  // One string, read by all four tiles, so a tile cannot end up describing a
+  // scope its neighbour has already left (issue #23).
+  const snapshot = `${segment}·${active.runDate}`;
+
   return (
     <div className="score">
       <div className="score__meta">
@@ -772,6 +792,7 @@ function Headline({
 
       <div className="score__grid">
         <Metric
+          snapshot={snapshot}
           name="Mention rate"
           value={active.mentionRate.rate}
           format={pct}
@@ -783,6 +804,7 @@ function Headline({
           )} · All (error-free, pooled)`}
         />
         <Metric
+          snapshot={snapshot}
           name="Avg accuracy"
           value={active.avgAccuracy.mean}
           format={score}
@@ -794,6 +816,7 @@ function Headline({
           )} · Mentioned cohort`}
         />
         <Metric
+          snapshot={snapshot}
           name="Owned-citation rate"
           value={active.ownedCitationRate.rate}
           format={pct}
@@ -805,6 +828,7 @@ function Headline({
           )} · All (error-free)`}
         />
         <Metric
+          snapshot={snapshot}
           name="1st-place rate"
           value={active.firstPlaceRate.rate}
           format={pct}
