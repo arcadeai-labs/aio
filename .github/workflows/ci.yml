@@ -271,10 +271,73 @@ jobs:
                 fail=1; return; }
               echo "ok: $route -> $n $name (exactly $want required)"
             fi
+            # ── The synthetic marker (#4) ────────────────────────────────────
+            #
+            # EXACTLY ONE per page, counted — not grepped for. It is a single
+            # band under the nav, so zero is the defect it exists to prevent
+            # (invented numbers rendered as if they were measured) and two is a
+            # defect of its own. `grep -q synthetic` passes on both one and
+            # two; `grep -c` with nothing asserted about the result passes on
+            # ZERO, which is exactly the shape this job was sent back for in
+            # round 1. So: count, then assert the count.
+            #
+            # All five pages must carry it, and that is a fact rather than an
+            # accident: CI seeds from analytics.config.example.json, which
+            # carries `"synthetic": true`, so every ingested run is flagged —
+            # the scoreboard is marked because the run it renders is flagged,
+            # and the four pooling pages because some ingested run is. If CI
+            # ever seeded from a config without the flag, these five would all
+            # correctly go unmarked and this assertion would fail, which is the
+            # right outcome: the job would otherwise be unable to tell a marked
+            # corpus from an unmarked one.
+            #
+            # `LC_ALL=C` on both greps below, and it is load-bearing for the
+            # same reason `-a` is (#20). The marker's wording contains an em
+            # dash, so the pattern is multibyte, and the SSR stream embeds NUL
+            # bytes — in a UTF-8 locale a grep can decline to match a line
+            # holding an invalid sequence and answer 0 on a page that plainly
+            # contains the text. Without this the wording check reported
+            # `0 times` for /, /runs, /competitive and /cited while passing on
+            # /prompts, on the same saved pages that a byte-wise grep matched
+            # once each. An assertion that answers differently depending on
+            # whose shell runs it is worse than no assertion; C locale makes it
+            # a byte comparison and it agrees everywhere.
+            local m t
+            m="$(LC_ALL=C grep -ao 'class="shell__synthetic"' "$file" | wc -l | tr -d ' ' || true)"
+            [ "$m" = "1" ] || {
+              echo "::error::$route: $m synthetic markers rendered, expected exactly 1 — every run in the CI corpus is flagged synthetic, so this page must say so once"
+              fail=1; return; }
+            # The class alone would pass on an EMPTY band, so the band has to
+            # actually make the claim.
+            t="$(LC_ALL=C grep -aoF "$synthetic_text" "$file" | wc -l | tr -d ' ' || true)"
+            [ "$t" = "1" ] || {
+              echo "::error::$route: the synthetic band carries the marker wording $t times, expected exactly 1"
+              fail=1; return; }
+            echo "ok: $route -> 1 synthetic marker, wording matches SYNTHETIC_MARKER"
           }
           # One row per prompt the seeder was handed: the CSV `bun run seed`
           # defaults to with PROMPTS_FILE unset, minus its header line.
           prompts="$(( $(grep -c . prompts/default.csv) - 1 ))"
+          # The synthetic marker's wording, read from the constant that owns it
+          # (#4) rather than pasted here, so what this asserts is that the page
+          # and SYNTHETIC_MARKER agree. What the sentence must CLAIM is pinned
+          # by apps/web/test/nav-synthetic-marker.test.tsx; that is not this
+          # job's business and copying the text here would just be a second
+          # place for it to drift.
+          #
+          # Asserted non-empty before use: an extraction that silently came
+          # back empty would make every `grep -F "$synthetic_text"` below match
+          # any page at all. Same reason every count in this job is asserted
+          # before it is read.
+          synthetic_text="$(
+            sed -n '/export const SYNTHETIC_MARKER/,/;/p' \
+              apps/web/src/lib/synthetic-view.ts | tr '\n' ' ' \
+              | sed 's/.*"\(.*\)".*/\1/'
+          )"
+          [ -n "$synthetic_text" ] || {
+            echo "::error::could not read SYNTHETIC_MARKER out of apps/web/src/lib/synthetic-view.ts — this step will not assert wording it failed to load"
+            exit 1; }
+          echo "SYNTHETIC_MARKER: $synthetic_text"
           check /            funnel__count  "cohort funnel counts"        4
           check /runs        runs__date     "run rows"                    "$SEEDED_RUNS"
           check /prompts     prompts__link  "prompt rows"                 "$prompts"
@@ -299,6 +362,16 @@ jobs:
             echo "::error::/runs shows $rows rows for $SEEDED_RUNS ingested runs"; exit 1; }
           [ "$header" = "$SEEDED_RUNS" ] || {
             echo "::error::/runs header says $header for $SEEDED_RUNS ingested runs"; exit 1; }
+          # A DIFFERENT signal from the header band, and deliberately not
+          # conflated with it: /runs also tags each seeded ROW `runs__seeded`
+          # (#4). One tag per row, so the expected count is the run count. Worth
+          # its own assertion because the header marker is scoped to the corpus
+          # — if the per-row tag stopped rendering entirely, the band would
+          # still be there and every other check here would stay green.
+          seeded="$(LC_ALL=C grep -ao 'class="runs__seeded"' /tmp/pop_runs.html | wc -l | tr -d ' ' || true)"
+          [ "$seeded" = "$SEEDED_RUNS" ] || {
+            echo "::error::/runs tags $seeded rows seeded for $SEEDED_RUNS ingested runs"; exit 1; }
+          echo "ok: /runs -> $seeded seeded row tags (exactly $SEEDED_RUNS required)"
 
       # Cohort counts, not cohort rates: every sub-cohort is drawn from the
       # error-free All population, so none of them can exceed it. A count that
