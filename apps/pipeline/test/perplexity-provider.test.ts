@@ -212,46 +212,78 @@ describe("a 200 that is not a completed response", () => {
   });
 });
 
+const UNSEARCHED_ANSWER =
+  "Taskwell is a well-regarded to-do application for small teams.";
+
+/** Fluent, confident, completed — and sourceless. */
+function unsearchedResponse() {
+  return {
+    id: "resp_nosearch",
+    status: "completed",
+    model: "perplexity/sonar",
+    output: [
+      {
+        type: "message",
+        content: [
+          { type: "output_text", text: UNSEARCHED_ANSWER, annotations: [] },
+        ],
+      },
+    ],
+    usage: { input_tokens: 10, output_tokens: 20 },
+    error: null,
+  };
+}
+
 describe("a 200 where the model never searched", () => {
-  test("no search_results output item is an error, not a clean uncited result", async () => {
-    // Fluent, confident, completed — and sourceless. Web search is opt-in and
-    // the model decides, so this is reachable even though we send the tool.
-    serve({
-      id: "resp_nosearch",
-      status: "completed",
-      model: "perplexity/sonar",
-      output: [
-        {
-          type: "message",
-          content: [
-            {
-              type: "output_text",
-              text: "Taskwell is a well-regarded to-do application for small teams.",
-              annotations: [],
-            },
-          ],
-        },
-      ],
-      usage: { input_tokens: 10, output_tokens: 20 },
-      error: null,
-    });
+  // Web search is opt-in and the model decides, so this is reachable even
+  // though the request carries the tool. Recording it rather than failing it is
+  // a decision taken on #16 with the cost understood: the answer comes from
+  // parametric memory, not from Perplexity's search index, and once recorded it
+  // is scored like any other result.
+  test("an answer given without searching is recorded, not failed", async () => {
+    serve(unsearchedResponse());
 
     const result = await new PerplexityProvider().run(INPUT);
 
-    expect(result.error).not.toBeNull();
-    expect(result.error?.code).toBe("no_search_results");
-    expect(result.error?.message).toContain("without searching");
-    expect(result.responseText).toBe("");
-    expect(result.citations).toEqual([]);
+    expect(result.error).toBeNull();
     expect(result.searchResults).toEqual([]);
-    expect(result.error && isCredentialError(result.error)).toBe(false);
+    expect(result.citations).toEqual([]);
+    expect(result.searchQueries).toEqual([]);
+  });
+
+  test("the recorded answer keeps its text — an uncited result is not an empty one", async () => {
+    // The half that would rot silently. Flipping this path back to a throw, or
+    // dropping the text on the way through, both leave `searchResults: []` and
+    // look identical from the assertions above.
+    serve(unsearchedResponse());
+
+    const result = await new PerplexityProvider().run(INPUT);
+
+    expect(result.responseText).toBe(UNSEARCHED_ANSWER);
+    expect(result.responseText.trim()).not.toBe("");
+    expect(result.metadata.tokenUsage.outputTokens).toBe(20);
+  });
+
+  test("rawSearchCalls is empty, which is how an unsearched answer stays distinguishable", async () => {
+    // The two zero-result cases produce similar results but are different
+    // facts, and this is the field that separates them: no search was
+    // attempted here, whereas the test below searched and found nothing. It
+    // survives into the JSONL archive, so the distinction is recoverable after
+    // the fact even though neither carries an error.
+    serve(unsearchedResponse());
+
+    const result = await new PerplexityProvider().run(INPUT);
+    expect(result.rawSearchCalls).toEqual([]);
   });
 
   test("a search that ran and found nothing IS a result — a genuine zero is not a failure", async () => {
-    // The distinction that makes the check above honest rather than blunt. The
-    // search block is present with an empty results array: the engine searched
-    // and returned nothing. That is a real measurement of a quiet brand and
-    // must reach the dashboard, not be thrown away as an error.
+    // The other half of the pair above, and the reason the two branches are not
+    // collapsed. The search block is present with an empty results array: the
+    // engine searched and returned nothing. That is a real measurement of a
+    // quiet brand. Both cases are now recorded and both have empty
+    // `searchResults`, so the assertions that matter are the ones that tell
+    // them apart — the queries it ran, and a rawSearchCall proving a search
+    // happened at all.
     serve({
       id: "resp_empty_search",
       status: "completed",

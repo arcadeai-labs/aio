@@ -287,21 +287,29 @@ export class PerplexityProvider extends BaseProvider {
     const output = response.output ?? [];
     const searchBlocks = output.filter(isSearchResults);
 
-    // Web search is opt-in AND the model decides whether to call it, so passing
-    // `tools` proves nothing — the evidence is on the response. No
-    // `search_results` item at all means the model answered from parametric
-    // memory, which is not a measurement of what Perplexity's *search engine*
-    // says and must not be recorded as a clean result with zero citations.
+    // Web search is opt-in AND the model decides whether to call it, so a
+    // response can arrive with no `search_results` output item at all: the model
+    // answered from parametric memory rather than from Perplexity's search
+    // index. That answer is **recorded**, not failed — an explicit decision on
+    // #16, taken knowing the cost.
     //
-    // Note the distinction, which is deliberate and tested: a `search_results`
-    // item that is *present but empty* means the search ran and found nothing.
-    // That is a genuine zero and is recorded as a successful result.
-    if (searchBlocks.length === 0) {
-      throw new PerplexityAgentError(
-        "Perplexity Agent API returned no search_results output item, so the model answered without searching; refusing to record an uncited answer as a result",
-        "no_search_results",
-      );
-    }
+    // The cost, stated so nobody has to rediscover it: an unsearched answer
+    // enters the corpus looking much like a searched one that found nothing,
+    // and the judge will score it as an ordinary result. The two are still
+    // distinguishable on the record, and the loop below keeps them that way
+    // rather than flattening both to empty arrays:
+    //
+    //   no `search_results` item      → searchQueries [], rawSearchCalls []
+    //   `search_results` item, empty  → the queries it ran, and one
+    //                                   rawSearchCall proving a search happened
+    //
+    // So `rawSearchCalls.length === 0` is the signal that no search was
+    // attempted, and it survives into the JSONL archive. Do not collapse the
+    // two branches because their `searchResults` both happen to be empty; they
+    // are different facts about what the provider did.
+    //
+    // Nothing below throws. `status !== "completed"` above is the guard that
+    // still does, and it is unrelated to this.
 
     const responseText = output
       .filter(isMessage)
