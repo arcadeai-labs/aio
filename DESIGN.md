@@ -51,6 +51,25 @@ a fast, cohort-aware analytics surface.
 - Runs from an older regime with a different prompt shape are out of scope. The
   `ingest` package may gain a "legacy" backfill mode later; it is not built.
 
+**A model id is a series key, and a tier is not recoverable from a trend line.**
+Because matching joins on `(prompt, provider, model)`, changing a model id ends
+one series and starts another. The dashboard renders that as a **gap, not a
+zero**, which is correct — but it says nothing about *why* the id changed, and a
+later reader cannot tell a tier change from a rename. So tier changes are
+recorded here rather than inferred.
+
+- **2026-09-17, `perplexity`: `sonar-pro` → `perplexity/sonar` (#16).** Not a
+  rename. Perplexity's Sonar chat-completions endpoint sunsets on **2026-09-27**
+  and the Agent API that replaced it does not serve a `-pro` tier at all —
+  confirmed both by its published model list and by direct probe
+  (`HTTP 400 validation failed: model "sonar-pro" is not supported`).
+  `perplexity/sonar` is the **base tier**, so the new series measures a tier
+  *below* what the old one did. On the captured comparison prompt that showed as
+  1315 → 867 characters and `$0.00992` → `$0.00397`. No available id preserved
+  the old tier, so this is not a cost of the migration path chosen — it is the
+  only path. Read the break at 2026-09-17 in any Perplexity series as a tier
+  change, not as a regression in how the brand is described.
+
 **Data volume reality.** A run is `prompts × providers` rows — a few hundred to
 a few thousand. Over a year of weekly runs that is tens of thousands of result
 rows plus matching verdicts and child rows. This is tiny: no partitioning,
