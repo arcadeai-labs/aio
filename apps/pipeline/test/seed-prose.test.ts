@@ -208,10 +208,17 @@ describe("a response never repeats itself", () => {
     }
   });
 
-  test("a citation never quotes a sentence the answer already used", () => {
+  test("a citation that quotes its source never echoes the answer's own prose", () => {
+    // Scoped to the citations that quote a *source*. The pair that carry
+    // `startIndex`/`endIndex` quote the **answer** by definition — that is what
+    // an offset into `responseText` means, and both `providers/openai.ts` and
+    // `providers/openrouter.ts` set `citedText = responseText.slice(...)`. The
+    // rule this guards is the #2 defect: a source snippet that was really the
+    // answer's own sentence pasted back as evidence.
     for (const { result } of rows) {
       const body = new Set(sentencesOf(result.responseText));
       for (const citation of result.citations) {
+        if (citation.startIndex !== undefined) continue;
         expect({ id: result.id, echoed: body.has(citation.citedText) }).toEqual(
           {
             id: result.id,
@@ -220,6 +227,26 @@ describe("a response never repeats itself", () => {
         );
       }
     }
+  });
+
+  test("a citation that carries offsets quotes exactly what they point at", () => {
+    // The mirror of the rule above, and the one an offset is worthless
+    // without: `startIndex`/`endIndex` are only meaningful if they resolve.
+    let checked = 0;
+    for (const { result } of rows) {
+      for (const citation of result.citations) {
+        if (citation.startIndex === undefined) continue;
+        expect({
+          id: result.id,
+          resolved: result.responseText.slice(
+            citation.startIndex,
+            citation.endIndex,
+          ),
+        }).toEqual({ id: result.id, resolved: citation.citedText });
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });
 

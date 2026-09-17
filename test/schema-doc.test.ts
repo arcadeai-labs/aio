@@ -236,15 +236,21 @@ describe("SCHEMA.md states the ingest seam", () => {
  * The document's own statement about what it has and has not seen working.
  *
  * AC2 for issue #11 asked for every documented field to be confirmed against a
- * real ingested row. Six optional fields and the two `Learning` contracts
- * cannot be, because the credential-free seed corpus never produces them.
- * Rather than quietly document them as if they had been observed, SCHEMA.md
- * marks them † and says so. #34 extends the corpus to close the gap.
+ * real ingested row. Six optional fields and the two `Learning` contracts could
+ * not be, because the credential-free seed corpus never produced them, and
+ * SCHEMA.md marked them † rather than document them as if they had been
+ * observed. **#34 extended the corpus, and those six are now real** — so the †
+ * guards that pinned them were deleted here in the same change that made them
+ * false, which is exactly what SCHEMA.md said would happen.
  *
- * These tests exist so that boundary cannot be erased by accident. If #34 (or
- * anything else) makes a field real, the fix is to delete its † row here and in
- * SCHEMA.md in the same change — a failure below means the document is now
- * claiming less, or more, than the corpus actually demonstrates.
+ * What replaces them is the mirror claim, with the same teeth: each of the six
+ * now names a real column and carries **no** † marker, so the document cannot
+ * quietly slide back to hedging about a field the corpus demonstrably produces.
+ * The one remaining gap — `Learning` — is guarded by name *and* by its reason,
+ * so it cannot be erased either.
+ *
+ * The counts those rows quote are checked against the corpus itself, in
+ * `test/seed-ingest-coverage.test.ts`. This file only parses the document.
  */
 describe("SCHEMA.md is honest about what it has verified", () => {
   const VERIFICATION_HEADING =
@@ -256,51 +262,81 @@ describe("SCHEMA.md is honest about what it has verified", () => {
     expect(sectionBody(VERIFICATION_HEADING).length).toBeGreaterThan(0);
   });
 
-  test("points at the issue that closes the gap, from inside that section", () => {
+  test("points at the change that closed the gap, from inside that section", () => {
     // Scoped deliberately. `expect(doc).toContain("/issues/34")` — what this
     // was in round 2 — passes when the link is deleted from the verification
-    // section and added anywhere else in the file. The link is only useful to
-    // a reader who has just read that a field is unverified, so that is where
-    // it has to be.
+    // section and added anywhere else in the file. A reader who has just been
+    // told these fields are confirmed against rows needs the provenance of that
+    // claim in the same breath, so that is where the link has to be.
     expect(sectionBody(VERIFICATION_HEADING)).toContain("/issues/34");
   });
 
-  // (type, field) pairs the seeded corpus does not populate. The row must both
-  // name a real DB column — these are ingestable, just never exercised — and
-  // carry the † marker that sends the reader to the verification section.
-  const UNEXERCISED: [type: string, field: string, column: string][] = [
-    ["RunMetadata", "estimatedCostUsd", "results.estimated_cost_usd"],
-    ["SearchResult", "pageDate", "search_results.page_date"],
-    ["Citation", "startIndex", "citations.start_index"],
-    ["Citation", "endIndex", "citations.end_index"],
-  ];
+  // The fields that used to be marked †. Each must now name a real DB column
+  // and carry **no** †. This is the mirror of the guard it replaced: the corpus
+  // produces these, and a document that went back to hedging about them would
+  // be claiming less than the data demonstrates — which is the same defect as
+  // claiming more, pointed the other way.
+  const FORMERLY_UNEXERCISED: [type: string, field: string, column: string][] =
+    [
+      ["RunMetadata", "estimatedCostUsd", "results.estimated_cost_usd"],
+      ["SearchResult", "pageDate", "search_results.page_date"],
+      ["SearchResult", "score", "search_results.score"],
+      ["Citation", "startIndex", "citations.start_index"],
+      ["Citation", "endIndex", "citations.end_index"],
+    ];
 
-  for (const [type, field, column] of UNEXERCISED) {
-    test(`${type}.${field} is marked as not exercised by the corpus`, () => {
+  for (const [type, field, column] of FORMERLY_UNEXERCISED) {
+    test(`${type}.${field} is documented as landing in a real row`, () => {
       const row = sectionFor(type)
         .split("\n")
         .find((l) => l.startsWith(`| \`${field}\``));
       expect(row).toBeDefined();
       expect(row).toContain(column);
-      expect(row).toContain("†");
+      expect(row).not.toContain("†");
+      expect(row).not.toContain("**—**");
     });
   }
 
-  // promptMeta's two unexercised keys live in their own table, keyed by CSV key
-  // rather than by contract field, so they are checked by section name.
-  for (const key of ["location", "labels"]) {
-    test(`promptMeta.${key} is marked as not exercised by the corpus`, () => {
+  // promptMeta's two keys live in their own table, keyed by CSV key rather than
+  // by contract field, so they are checked by section name.
+  const PROMPT_META_KEYS: [key: string, column: string][] = [
+    ["location", "prompts.location"],
+    ["labels", "prompt_labels.label"],
+  ];
+
+  for (const [key, column] of PROMPT_META_KEYS) {
+    test(`promptMeta.${key} is documented as landing in a real row`, () => {
       const row = sectionBody("#### `promptMeta`")
         .split("\n")
         .find((l) => l.startsWith(`| \`${key}\``));
       expect(row).toBeDefined();
-      expect(row).toContain("†");
+      expect(row).toContain(column);
+      expect(row).not.toContain("†");
     });
   }
 
   test("says plainly that no Learning record has been observed", () => {
     const section = sectionBody(VERIFICATION_HEADING);
     expect(section).toContain("no `Learning` record has been observed");
+  });
+
+  test("says why a Learning cannot come from the credential-free corpus", () => {
+    // "Not observed" with no reason reads as an oversight someone will try to
+    // fix in the seeder. It is not: the only registered generator makes a live
+    // judge-model call, so the gap moves when the registry does. A reader has
+    // to be told that rather than left to discover it.
+    const section = sectionBody(VERIFICATION_HEADING);
+    expect(section).toContain("live judge-model call");
+    expect(section).toContain("credential-free generator");
+  });
+
+  test("says that WeekComparison is inside the seeded corpus's reach", () => {
+    // The other half of the same question, answered the other way — and only
+    // true because `bun run seed` writes that file through the shipped
+    // comparator. If it stopped, this sentence is the lie left behind.
+    const section = sectionBody(VERIFICATION_HEADING);
+    expect(section).toContain("comparison-YYYY-MM-DD.json");
+    expect(section).toContain("compareWeeks");
   });
 });
 
