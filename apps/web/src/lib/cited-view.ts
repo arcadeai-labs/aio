@@ -8,8 +8,16 @@
 export const CITED_THEME_ALL = "all";
 
 /** Single calm accent for the owned-citation reach line (one rate over time, not
- * a set of categories needing distinct colors). Matches competitive's SOV_BAR. */
-export const REACH_LINE = "#4f8cc9";
+ * a set of categories needing distinct colors).
+ *
+ * Deliberately no longer the same value as competitive's SOV_BAR. That shared
+ * `#4f8cc9` measured 5.62:1 against the near-black chart surface — the lowest of
+ * any drawn series, and this one line was the most-reported "empty" chart in
+ * issue #25: a single thick unoccluded trend that still read as a blank box. It
+ * is the same calm blue, lifted to 8.74:1. SOV_BAR keeps the original value: the
+ * leaderboard bars are filled shapes, not 2.75px strokes, and they are legible
+ * at 100% today. */
+export const REACH_LINE = "#74b0f0";
 
 export const pct = (rate: number | null): string =>
   rate === null ? "—" : `${(rate * 100).toFixed(1)}%`;
