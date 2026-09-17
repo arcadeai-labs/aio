@@ -22,6 +22,11 @@ mock.module("@tanstack/react-router", () => ({
     // about, and a hrefless <a> is an accessibility lint error.
     <span className={className}>{children}</span>
   ),
+  // Nav resolves the current section from the location (issue #39). Which
+  // section is highlighted is not what this file is about; that it renders at
+  // all is, so the stub just answers with the scoreboard's path.
+  useLocation: ({ select }: { select: (l: { pathname: string }) => unknown }) =>
+    select({ pathname: "/" }),
 }));
 
 import type { NavSection } from "../src/components/Nav";
