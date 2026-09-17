@@ -20,7 +20,9 @@
 import { describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
-GlobalRegistrator.register();
+// Conditional because `bun test` shares one process across files and a second
+// registration throws — another render-level suite may have got here first.
+if (!GlobalRegistrator.isRegistered) GlobalRegistrator.register();
 
 // Imported after the DOM exists: react-dom/client binds to globals at import.
 const { useState } = await import("react");

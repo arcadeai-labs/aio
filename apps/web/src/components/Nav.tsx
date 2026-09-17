@@ -4,7 +4,7 @@
 // *other* pages. Sub-pages pass the section they belong to (a result/drilldown is
 // "scoreboard", a prompt trajectory is "prompts") so the highlight still reads.
 import type { Segment } from "@aio/db";
-import { Link } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import { signOut } from "../lib/auth-client";
 import { SYNTHETIC_MARKER, isSyntheticScope } from "../lib/synthetic-view";
 
@@ -20,6 +20,65 @@ function navClass(active: boolean): string {
   return active ? "shell__navlink shell__navlink--active" : "shell__navlink";
 }
 
+// ── Which link reads as current, and when (issue #39) ────────────────────────
+//
+// The highlight used to come from the `active` prop — a constant of the route
+// component that is rendered — while each `Link` independently applied its own
+// `active` class and `aria-current="page"` from the location. The location
+// commits on click; the next route's component only renders once its loader
+// resolves, so until then the *old* page's prop still marks the old section
+// while the link you clicked already marks the new one. Measured on the seeded
+// corpus: 4 of 91 frames with two nav links reading as current.
+//
+// So the section is resolved from the location instead, read through
+// `useLocation` — the same store `Link` matches against, so the two cannot
+// disagree in any frame. Pathname rather than `Link`'s own matching because the
+// nav highlights a *section*, and two sections include pages whose path is not
+// the link's: `/prompt/$promptId` belongs to Prompts, `/run/…/provider/…` to
+// Scoreboard. `Link`'s matching is pinned to `exact` (below) so it can only ever
+// agree with this map or stay silent — never contradict it.
+
+/** Pages whose whole path is the section. `/` is here and not in the prefix list
+ * below precisely because every path starts with it. */
+const SECTION_BY_EXACT_PATH: Readonly<Record<string, NavSection>> = {
+  "/": "scoreboard",
+  "/prompts": "prompts",
+  "/competitive": "competitive",
+  "/cited": "cited",
+  "/runs": "runs",
+};
+
+/** Parameterised pages, matched on their prefix. */
+const SECTION_BY_PREFIX: ReadonlyArray<[string, NavSection]> = [
+  ["/prompt/", "prompts"],
+  ["/run/", "scoreboard"],
+  // A single result is a leaf, not a section: nothing in the bar is current
+  // there, which is what `active={null}` has always meant on that page.
+  ["/result/", null],
+];
+
+/**
+ * The section a pathname belongs to. `undefined` — distinct from the `null` that
+ * means "deliberately no section" — when the path is not one of the dashboard's
+ * own pages; the caller's declared `active` covers that case, so a route added
+ * later still highlights something.
+ */
+export function sectionForPath(pathname: string): NavSection | undefined {
+  const path = pathname.replace(/\/+$/, "") || "/";
+  if (path in SECTION_BY_EXACT_PATH) return SECTION_BY_EXACT_PATH[path];
+  for (const [prefix, section] of SECTION_BY_PREFIX) {
+    if (path.startsWith(prefix)) return section;
+  }
+  return undefined;
+}
+
+/** Pinning every nav link to an exact pathname match keeps `Link`'s own active
+ * state a subset of `sectionForPath`'s: on `/prompt/$id` no link matches and the
+ * map alone marks Prompts, and nowhere can the two mark different links.
+ * `includeSearch: false` because the nav highlights a section, not a scope — the
+ * Scoreboard link stays current with the theme breakdown open. */
+const SECTION_MATCH = { exact: true, includeSearch: false } as const;
+
 export function Nav({
   active,
   segment,
@@ -27,6 +86,11 @@ export function Nav({
   syntheticRuns,
   run,
 }: {
+  /**
+   * The section this page declares it belongs to. The location is authoritative
+   * (see `sectionForPath`); this is the fallback for a path the map has not
+   * learned, so a route added later still highlights something.
+   */
   active: NavSection;
   /** The scope most links carry, so switching pages preserves the segment. */
   segment: Segment;
@@ -45,6 +109,10 @@ export function Nav({
   run?: string | readonly (string | null | undefined)[] | null;
 }) {
   const synthetic = isSyntheticScope(syntheticRuns, run);
+  // Read from the location store, in the same render `Link` reads it.
+  const pathname = useLocation({ select: (l) => l.pathname });
+  const fromPath = sectionForPath(pathname);
+  const current = fromPath === undefined ? active : fromPath;
   return (
     <>
       <header className="shell__bar">
@@ -53,39 +121,44 @@ export function Nav({
           <Link
             to="/"
             search={{ segment, byTheme: false, byProvider: false }}
-            className={navClass(active === "scoreboard")}
-            aria-current={active === "scoreboard" ? "page" : undefined}
+            className={navClass(current === "scoreboard")}
+            aria-current={current === "scoreboard" ? "page" : undefined}
+            activeOptions={SECTION_MATCH}
           >
             Scoreboard
           </Link>
           <Link
             to="/prompts"
             search={{ segment, theme: "all" }}
-            className={navClass(active === "prompts")}
-            aria-current={active === "prompts" ? "page" : undefined}
+            className={navClass(current === "prompts")}
+            aria-current={current === "prompts" ? "page" : undefined}
+            activeOptions={SECTION_MATCH}
           >
             Prompts
           </Link>
           <Link
             to="/competitive"
             search={{ segment, theme: "all" }}
-            className={navClass(active === "competitive")}
-            aria-current={active === "competitive" ? "page" : undefined}
+            className={navClass(current === "competitive")}
+            aria-current={current === "competitive" ? "page" : undefined}
+            activeOptions={SECTION_MATCH}
           >
             Competitive
           </Link>
           <Link
             to="/cited"
             search={{ segment, theme: "all" }}
-            className={navClass(active === "cited")}
-            aria-current={active === "cited" ? "page" : undefined}
+            className={navClass(current === "cited")}
+            aria-current={current === "cited" ? "page" : undefined}
+            activeOptions={SECTION_MATCH}
           >
             Cited
           </Link>
           <Link
             to="/runs"
-            className={navClass(active === "runs")}
-            aria-current={active === "runs" ? "page" : undefined}
+            className={navClass(current === "runs")}
+            aria-current={current === "runs" ? "page" : undefined}
+            activeOptions={SECTION_MATCH}
           >
             Runs
           </Link>

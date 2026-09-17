@@ -3,6 +3,7 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { AnimatedNumber } from "../components/AnimatedNumber";
 import { Nav } from "../components/Nav";
+import { SegmentPills } from "../components/SegmentPills";
 import { TrendChart, type TrendSeries } from "../components/TrendChart";
 import { fetchCitedView } from "../lib/cited";
 import {
@@ -14,7 +15,7 @@ import {
   shortDate,
 } from "../lib/cited-view";
 import { resolveUser } from "../lib/route-guard";
-import { SEGMENTS, SEGMENT_LABEL, toSegment } from "../lib/segments";
+import { SEGMENT_LABEL, toSegment } from "../lib/segments";
 import { fetchSyntheticRuns } from "../lib/synthetic";
 
 // Segment, the active (focus) run, and the theme scope all change what the
@@ -118,22 +119,10 @@ function Cited() {
           </span>
 
           <div className="comp__controls">
-            <div className="comp__segctl">
-              {SEGMENTS.map((s) => (
-                <Link
-                  key={s}
-                  from={Route.fullPath}
-                  // biome-ignore lint/suspicious/noExplicitAny: search-updater preserves all params
-                  search={(prev: any) => ({ ...prev, segment: s })}
-                  className={
-                    s === segment ? "comp__seg comp__seg--active" : "comp__seg"
-                  }
-                  aria-current={s === segment ? "true" : undefined}
-                >
-                  {SEGMENT_LABEL[s]}
-                </Link>
-              ))}
-            </div>
+            {/* Driven by the URL, not by the route's resolved search, so the
+                three pills cannot read as two while the loader is in flight —
+                see components/SegmentPills (issue #39). */}
+            <SegmentPills to="/cited" variant="panel" />
 
             {/* Theme scope — only themes present in the Cited cohort under the
                 current segment are offered. */}
