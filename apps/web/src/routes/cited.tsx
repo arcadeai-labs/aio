@@ -15,6 +15,7 @@ import {
 } from "../lib/cited-view";
 import { resolveUser } from "../lib/route-guard";
 import { SEGMENTS, SEGMENT_LABEL, toSegment } from "../lib/segments";
+import { fetchSyntheticRuns } from "../lib/synthetic";
 
 // Segment, the active (focus) run, and the theme scope all change what the
 // server computes, so all three live in the URL (shareable, re-scopable) and are
@@ -42,17 +43,20 @@ export const Route = createFileRoute("/cited")({
     run: search.run,
     theme: search.theme,
   }),
-  loader: async ({ context, deps }) => ({
-    user: context.user,
-    view: await fetchCitedView({
-      data: { segment: deps.segment, run: deps.run, theme: deps.theme },
-    }),
-  }),
+  loader: async ({ context, deps }) => {
+    const [view, syntheticRuns] = await Promise.all([
+      fetchCitedView({
+        data: { segment: deps.segment, run: deps.run, theme: deps.theme },
+      }),
+      fetchSyntheticRuns(),
+    ]);
+    return { user: context.user, view, syntheticRuns };
+  },
   component: Cited,
 });
 
 function Cited() {
-  const { user, view } = Route.useLoaderData();
+  const { user, view, syntheticRuns } = Route.useLoaderData();
   const { segment, theme } = Route.useSearch();
   const {
     activeRunDate,
@@ -73,7 +77,14 @@ function Cited() {
 
   return (
     <main className="shell">
-      <Nav active="cited" segment={segment} email={user?.email} />
+      <Nav
+        active="cited"
+        segment={segment}
+        email={user?.email}
+        // No run: the page's trends/sparklines span the whole corpus, so a
+        // synthetic run anywhere in it is on screen here.
+        syntheticRuns={syntheticRuns}
+      />
 
       <section className="comp">
         <div className="comp__head">

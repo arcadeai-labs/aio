@@ -6,6 +6,7 @@ import { TrajectoryGrid } from "../components/TrajectoryGrid";
 import { fetchPromptTrajectory } from "../lib/prompt";
 import { resolveUser } from "../lib/route-guard";
 import { SEGMENT_LABEL, toSegment } from "../lib/segments";
+import { fetchSyntheticRuns } from "../lib/synthetic";
 import {
   DEFAULT_TRAJECTORY_METRIC,
   TRAJECTORY_METRICS,
@@ -26,17 +27,18 @@ function validateSearch(search: Record<string, unknown>): PromptSearch {
 export const Route = createFileRoute("/prompt/$promptId")({
   validateSearch,
   beforeLoad: resolveUser,
-  loader: async ({ context, params }) => ({
-    user: context.user,
-    view: await fetchPromptTrajectory({
-      data: { promptId: params.promptId },
-    }),
-  }),
+  loader: async ({ context, params }) => {
+    const [view, syntheticRuns] = await Promise.all([
+      fetchPromptTrajectory({ data: { promptId: params.promptId } }),
+      fetchSyntheticRuns(),
+    ]);
+    return { user: context.user, view, syntheticRuns };
+  },
   component: PromptTrajectoryView,
 });
 
 function PromptTrajectoryView() {
-  const { user, view } = Route.useLoaderData();
+  const { user, view, syntheticRuns } = Route.useLoaderData();
   const { segment } = Route.useSearch();
   const [metric, setMetric] = useState<TrajectoryMetric>(
     DEFAULT_TRAJECTORY_METRIC,
@@ -47,7 +49,13 @@ function PromptTrajectoryView() {
 
   return (
     <main className="shell">
-      <Nav active="prompts" segment={segment} email={user?.email} />
+      <Nav
+        active="prompts"
+        segment={segment}
+        email={user?.email}
+        // No run: a trajectory is drawn across every run in the corpus.
+        syntheticRuns={syntheticRuns}
+      />
 
       <section className="comp">
         {!found ? (

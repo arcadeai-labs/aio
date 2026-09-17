@@ -15,6 +15,7 @@ import {
 } from "../lib/drilldown-view";
 import { resolveUser } from "../lib/route-guard";
 import { SEGMENTS, SEGMENT_LABEL, toSegment } from "../lib/segments";
+import { fetchSyntheticRuns } from "../lib/synthetic";
 
 // Segment (and an optional incoming theme) are the *scope* the drill-down
 // inherits from the scoreboard — they live in the URL so a drilled-in view is
@@ -40,16 +41,19 @@ export const Route = createFileRoute("/run/$run/provider/$provider")({
   // Run (path), provider (path), and segment (search) all change what the server
   // computes, so all three are loader deps. The local sort/filter never refetch.
   loaderDeps: ({ search }) => ({ segment: search.segment }),
-  loader: async ({ context, params, deps }) => ({
-    user: context.user,
-    drilldown: await fetchProviderDrilldown({
-      data: {
-        provider: params.provider,
-        segment: deps.segment,
-        run: params.run,
-      },
-    }),
-  }),
+  loader: async ({ context, params, deps }) => {
+    const [drilldown, syntheticRuns] = await Promise.all([
+      fetchProviderDrilldown({
+        data: {
+          provider: params.provider,
+          segment: deps.segment,
+          run: params.run,
+        },
+      }),
+      fetchSyntheticRuns(),
+    ]);
+    return { user: context.user, drilldown, syntheticRuns };
+  },
   component: Drilldown,
 });
 
@@ -101,7 +105,7 @@ function SortHeader({
 }
 
 function Drilldown() {
-  const { user, drilldown } = Route.useLoaderData();
+  const { user, drilldown, syntheticRuns } = Route.useLoaderData();
   const { segment, theme } = Route.useSearch();
   const { provider } = Route.useParams();
 
@@ -141,7 +145,13 @@ function Drilldown() {
 
   return (
     <main className="shell">
-      <Nav active="scoreboard" segment={segment} email={user?.email} />
+      <Nav
+        active="scoreboard"
+        segment={segment}
+        email={user?.email}
+        syntheticRuns={syntheticRuns}
+        run={drilldown.runDate}
+      />
 
       <section className="dd">
         <div className="dd__head">

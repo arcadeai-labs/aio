@@ -12,8 +12,12 @@ import { ParentSize } from "@visx/responsive";
 import { scaleLinear } from "@visx/scale";
 import { LinePath } from "@visx/shape";
 import { useTooltip, useTooltipInPortal } from "@visx/tooltip";
-import { motion, useReducedMotion } from "framer-motion";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
+import {
+  DIM_STROKE_WIDTH,
+  SERIES_STROKE_WIDTH,
+  hasDrawableSeries,
+} from "../lib/trend-chart-theme";
 import { tooltipRows } from "../lib/trend-chart-view";
 
 export interface TrendSeries {
@@ -36,7 +40,11 @@ const MARGIN = { top: 12, right: 16, bottom: 28, left: 48 };
 // properties, so the values are inlined here in sync with styles.css.
 const GRID = "#1d1f23";
 const AXIS_TEXT = "#8a8f98";
-const DIM_LINE = "#2a2d33";
+// The context field behind the highlighted series. Lifted from #2a2d33 (1.44:1
+// against the surface — below the threshold at which a stroke registers at all)
+// to 1.88:1. Still far below the 7:1 floor every highlighted series clears, so
+// the field stays unambiguously recessive; it is now merely visible.
+const DIM_LINE = "#3a3f47";
 const HALO = "#08090a";
 /** Tooltip rows are capped so a 30-competitor SoV chart stays readable. */
 const TOOLTIP_ROWS = 12;
@@ -156,10 +164,30 @@ function TrendChartInner({
     [n, xScale, showTooltip],
   );
 
-  const reduceMotion = useReducedMotion();
   const dim = series.filter((s) => !s.highlighted);
   const hl = series.filter((s) => s.highlighted);
   const idx = tooltipOpen && tooltipData ? tooltipData.index : -1;
+  // A chart with nothing to draw says so, rather than rendering the same bare
+  // axes a populated-but-illegible chart used to render (issue #25). On this
+  // project "no data" and "data I cannot see" looking identical is the
+  // characteristic failure, so the difference is stated, not left to the eye.
+  const empty = !hasDrawableSeries(series);
+  // Whether to play the entrance trace, decided once at mount.
+  //
+  // An entrance must never be the state a line is *left* in, and this one could
+  // be: the trace hides the line and reveals it, and browsers pause animations
+  // in a tab that is not painting. A chart mounted in a background tab held at
+  // the start of the trace — fully invisible — until something made the tab
+  // paint, which is the indefinite blank panel issue #25 reported and the
+  // reason two verification agents nearly filed populated charts as blank.
+  //
+  // So a chart that cannot be watched animating is rendered already-drawn. SSR
+  // has no `document` and also renders drawn, which is the safe direction: the
+  // fallback everywhere is a visible line.
+  const [trace] = useState(
+    () =>
+      typeof document !== "undefined" && document.visibilityState === "visible",
+  );
 
   const data = (s: TrendSeries): Datum[] => s.values.map((v, i) => ({ i, v }));
   const defined = (d: Datum) => d.v != null;
@@ -234,15 +262,15 @@ function TrendChartInner({
               x={getX}
               y={getY}
               stroke={DIM_LINE}
-              strokeWidth={1}
+              strokeWidth={DIM_STROKE_WIDTH}
               opacity={0.7}
             />
           ))}
           {hl.map((s) => (
-            // Draw-in: each highlighted line traces itself on mount via pathLength
-            // (spec §9: "chart draw-in"). LinePath's render prop hands us the `d`
-            // string so a motion.path can animate it; reduced motion renders it
-            // already-drawn.
+            // Draw-in: each highlighted line traces itself on mount (spec §9:
+            // "chart draw-in"). LinePath's render prop hands us the `d` string;
+            // the trace is a CSS keyframe, and `pathLength={1}` normalizes the
+            // dash maths so the stylesheet needs no path's real length.
             <LinePath<Datum>
               key={s.label}
               data={data(s)}
@@ -251,16 +279,16 @@ function TrendChartInner({
               y={getY}
             >
               {({ path }) => (
-                <motion.path
+                <path
+                  className={
+                    trace
+                      ? "comp__chartline comp__chartline--trace"
+                      : "comp__chartline"
+                  }
                   d={path(data(s)) || ""}
-                  fill="none"
+                  pathLength={1}
                   stroke={s.color}
-                  strokeWidth={2}
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                  initial={reduceMotion ? false : { pathLength: 0 }}
-                  animate={{ pathLength: 1 }}
-                  transition={{ duration: 0.6, ease: "easeOut" }}
+                  strokeWidth={SERIES_STROKE_WIDTH}
                 />
               )}
             </LinePath>
@@ -273,22 +301,36 @@ function TrendChartInner({
                   key={s.label}
                   cx={xScale(idx)}
                   cy={yScale(v)}
-                  r={3}
+                  r={4}
                   fill={s.color}
                   stroke={HALO}
-                  strokeWidth={1}
+                  strokeWidth={1.5}
                 />
               );
             })}
-          <rect
-            x={0}
-            y={0}
-            width={innerW}
-            height={innerH}
-            fill="transparent"
-            onMouseMove={handleMove}
-            onMouseLeave={hideTooltip}
-          />
+          {empty && (
+            <text
+              x={innerW / 2}
+              y={innerH / 2}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fill={AXIS_TEXT}
+              fontSize={12}
+            >
+              No data for this selection
+            </text>
+          )}
+          {!empty && (
+            <rect
+              x={0}
+              y={0}
+              width={innerW}
+              height={innerH}
+              fill="transparent"
+              onMouseMove={handleMove}
+              onMouseLeave={hideTooltip}
+            />
+          )}
         </Group>
       </svg>
       {tooltipOpen && idx >= 0 && (

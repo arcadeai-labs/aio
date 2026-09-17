@@ -14,7 +14,9 @@ import { motion, useReducedMotion } from "framer-motion";
 import { type ReactNode, useEffect } from "react";
 import { AnimatedNumber } from "../components/AnimatedNumber";
 import { Nav } from "../components/Nav";
+import { RunStatusChip } from "../components/RunStatusChip";
 import { resolveUser } from "../lib/route-guard";
+import { runHealth } from "../lib/run-health";
 import { fetchScoreboard } from "../lib/scoreboard";
 import {
   TABLE_DELTA,
@@ -30,6 +32,7 @@ import {
   score,
 } from "../lib/scoreboard-view";
 import { SEGMENTS, SEGMENT_LABEL, toSegment } from "../lib/segments";
+import { fetchSyntheticRuns } from "../lib/synthetic";
 
 // URL state for the scoreboard's composable controls. The segment selector and
 // the two breakdown toggles (by-theme, by-provider) plus the active run all live
@@ -60,12 +63,14 @@ export const Route = createFileRoute("/")({
   // The byTheme/byProvider toggles only reveal already-fetched rows, so they stay
   // out of the deps (no refetch on toggle).
   loaderDeps: ({ search }) => ({ segment: search.segment, run: search.run }),
-  loader: async ({ context, deps }) => ({
-    user: context.user,
-    scoreboard: await fetchScoreboard({
-      data: { segment: deps.segment, run: deps.run },
-    }),
-  }),
+  loader: async ({ context, deps }) => {
+    // Independent reads: the marker's run list never depends on the scoreboard.
+    const [scoreboard, syntheticRuns] = await Promise.all([
+      fetchScoreboard({ data: { segment: deps.segment, run: deps.run } }),
+      fetchSyntheticRuns(),
+    ]);
+    return { user: context.user, scoreboard, syntheticRuns };
+  },
   component: Home,
 });
 
@@ -287,7 +292,7 @@ function RunSwitcher({
 
 // Per-run freshness/provenance (issue #8) — read from the active run's
 // `ingest_runs` row. Surfaces ingested-at + row counts and makes partial/missing
-// runs detectable: a non-"ok" status or any orphaned verdicts warns. The full
+// runs detectable via the shared `runHealth` derivation. The full
 // per-run table lives on the /runs page; this is the active run's strip. The row
 // counts are the run's ingest totals (whole run, not segment-scoped — unlike the
 // headline above), so they're labelled "Total" to avoid reading as segment counts.
@@ -302,22 +307,9 @@ function Freshness({ provenance }: { provenance: RunProvenance | null }) {
       </div>
     );
   }
-  // Results that never produced a verdict — exactly the errored provider calls
-  // (every error-free result carries a verdict). A run with such a gap is partial
-  // even though the *ingest* status is "ok": ingest status tracks whether the
-  // files were read cleanly, not whether every provider call succeeded.
-  const missingVerdicts = Math.max(
-    0,
-    provenance.resultCount - provenance.verdictCount,
-  );
-  const partial =
-    provenance.status !== "ok" ||
-    provenance.orphanVerdictCount > 0 ||
-    missingVerdicts > 0;
-  // The pill says "ok" only for a genuinely complete run; otherwise it shows the
-  // ingest status when that's the problem, else "partial" for a verdict gap.
-  const statusLabel =
-    provenance.status !== "ok" ? provenance.status : partial ? "partial" : "ok";
+  // Health is derived in lib/run-health.ts, not here, so this strip and the
+  // /runs table cannot disagree about the same run (issue #28).
+  const { missingVerdicts, degraded: partial } = runHealth(provenance);
   return (
     <div className={partial ? "fresh fresh--warn" : "fresh"}>
       <span className="fresh__title">Freshness</span>
@@ -351,15 +343,7 @@ function Freshness({ provenance }: { provenance: RunProvenance | null }) {
           </span>
         </span>
       )}
-      <span
-        className={
-          partial
-            ? "fresh__status fresh__status--warn"
-            : "fresh__status fresh__status--ok"
-        }
-      >
-        {statusLabel}
-      </span>
+      <RunStatusChip run={provenance} variant="fresh" />
     </div>
   );
 }
@@ -881,7 +865,7 @@ function Headline({
 }
 
 function Home() {
-  const { user, scoreboard } = Route.useLoaderData();
+  const { user, scoreboard, syntheticRuns } = Route.useLoaderData();
   const search = Route.useSearch();
   const { byTheme, byProvider } = search;
   const navigate = useNavigate({ from: Route.fullPath });
@@ -901,7 +885,15 @@ function Home() {
   }, [search.run, activeDate, navigate]);
   return (
     <main className="shell">
-      <Nav active="scoreboard" segment={search.segment} email={user?.email} />
+      <Nav
+        active="scoreboard"
+        segment={search.segment}
+        email={user?.email}
+        syntheticRuns={syntheticRuns}
+        // Both runs the scoreboard renders: the active one and the prior one every
+        // WoW delta is computed against.
+        run={[activeDate, scoreboard.prior?.runDate]}
+      />
       <section className="shell__body shell__body--top">
         <Headline
           scoreboard={scoreboard}

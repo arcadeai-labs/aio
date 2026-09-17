@@ -10,10 +10,13 @@
 //   SEED_WEEKS=6 bun run seed          a shorter series
 //   SEED_ANCHOR_DATE=2026-08-31 bun run seed
 //
-// The corpus is synthetic and is not marked as such — a dashboard fed by it is
-// indistinguishable from one fed by a real run. Marking synthetic data end to
-// end is #4's slice; a second, competing scheme invented here would be worse
-// than none.
+// The corpus is marked synthetic in the dashboard when — and only when — the
+// config resolved below carries `"synthetic": true` (#4). The shipped
+// `analytics.config.example.json` carries it, so the documented seed path is
+// marked; seeding against a config without it produces an unmarked corpus, by
+// design. The config is the single source of truth and the seeder deliberately
+// does not stamp the flag itself: a second, competing scheme here would be
+// worse than none. Keeping that path documented is #36.
 
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";

@@ -4,6 +4,7 @@
 // rates (and any delta against them) on the next page load, with no precomputed
 // comparison files involved (PRD story #31).
 
+import { isSyntheticConfig } from "@aio/core";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "./client.js";
 import {
@@ -693,6 +694,28 @@ async function brandNameForRun(runDate: string): Promise<string> {
     .where(eq(configSnapshots.runDate, runDate))
     .limit(1);
   return snap?.brandName ?? DEFAULT_BRAND_NAME;
+}
+
+/**
+ * The run dates whose config snapshot carries `"synthetic": true` — the runs a
+ * reader must be told are generated rather than measured (issue #4).
+ *
+ * Read from `config_snapshots.raw`, the per-run snapshot of the whole analytics
+ * config that ingest already writes, so no column and no migration exist for
+ * this: adding the field to the config is the only thing that had to change.
+ *
+ * Absence is the real case, in every direction. A run with no snapshot, a
+ * snapshot with no `synthetic` key, or a key holding anything other than the
+ * boolean `true` is **not** returned — see `isSyntheticConfig`. A run predating
+ * this feature came from the real pipeline, and marking measured data invented
+ * would teach readers to ignore the marker entirely.
+ */
+export async function syntheticRunDates(): Promise<string[]> {
+  const rows = await db
+    .select({ runDate: configSnapshots.runDate, raw: configSnapshots.raw })
+    .from(configSnapshots)
+    .orderBy(desc(configSnapshots.runDate));
+  return rows.filter((r) => isSyntheticConfig(r.raw)).map((r) => r.runDate);
 }
 
 // How many competitors the view ships. The judge's competitor field is a long

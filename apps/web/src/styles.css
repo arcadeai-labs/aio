@@ -145,6 +145,23 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* The synthetic-data marker (issue #4). A filled amber band directly under the
+   nav on every page whose data is generated, sized to be readable in a
+   screenshot with no surrounding context — that screenshot is the thing this
+   guards against, since the seed corpus attaches invented numbers to real
+   competitor names. Amber is the caution token, so no gain/loss meaning is
+   borrowed from green/red. Deliberately not dismissible and not a toast: it has
+   no control and no state to close. */
+.shell__synthetic {
+  background: var(--warn);
+  color: #08090a;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  padding: 7px 20px;
+  border-bottom: 1px solid var(--warn-border);
+}
+
 .shell__account {
   display: flex;
   align-items: center;
@@ -1200,6 +1217,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* A non-zero gap (missing verdicts / orphans) reads as a warning, matching the
+   scoreboard's .fresh__val--warn so the same fact looks the same on both pages. */
+.runs__num--warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
 .runs__date,
 .runs__ts {
   font-variant-numeric: tabular-nums;
@@ -1212,6 +1236,24 @@ body {
 
 .runs__ts {
   color: var(--fg-muted);
+}
+
+/* The per-row seeded tag (issue #4): which listed runs are generated rather than
+   measured, so a real week is never read next to an invented one. Amber, like the
+   header marker, because it is the same caution — and distinct from the run-health
+   chip beside it, which answers a different question. */
+.runs__seeded {
+  margin-left: 8px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--warn);
+  color: #08090a;
+  vertical-align: middle;
 }
 
 .runs__status {
@@ -1571,6 +1613,46 @@ body {
 
 .comp__chart {
   display: block;
+}
+
+/* Highlighted trend lines. The base style is a fully drawn line, deliberately:
+   the draw-in below is an entrance, and an entrance must never be the state a
+   line is left in.
+
+   The previous implementation animated framer-motion's `pathLength` from 0,
+   which made "invisible" the resting state whenever requestAnimationFrame was
+   not running — a chart in a tab that is not painting sat at ~5% drawn
+   indefinitely, and that is what issue #25 reported as an empty panel. A CSS
+   animation falls back to the element's base style instead, so a line that
+   never animates is simply drawn.
+
+   `pathLength="1"` (set on the path) normalizes every path to a length of 1, so
+   one dash of 1 covers the whole line whatever its real geometry. */
+.comp__chartline {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The trace is opt-in per render, not automatic: TrendChart adds this modifier
+   only when the document is visible at mount. Chrome pauses CSS animations in a
+   tab that is not painting, so a chart mounted in a background tab would
+   otherwise hold at the *start* of the trace — invisible — for as long as the
+   tab stayed there, which is the indefinite blank panel issue #25 reported. */
+@media (prefers-reduced-motion: no-preference) {
+  .comp__chartline--trace {
+    stroke-dasharray: 1;
+    animation: comp-chart-draw 600ms ease-out;
+  }
+}
+
+@keyframes comp-chart-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 /* Crosshair tooltip (visx TooltipInPortal, rendered unstyled). */
@@ -2106,6 +2188,12 @@ body {
   /* The email is recoverable elsewhere; drop it so the nav has room to scroll. */
   .shell__email {
     display: none;
+  }
+
+  /* The marker wraps rather than shrinking: it is the one line on the page that
+     must stay legible at any width. */
+  .shell__synthetic {
+    padding: 7px 14px;
   }
 
   /* The scoreboard body is a centering grid whose auto track otherwise grows to
