@@ -226,14 +226,23 @@ export class PerplexityProvider extends BaseProvider {
       const response = await this.post({
         model: this.supportedModels[0],
         input: "ping",
-        max_output_tokens: 16,
+        max_output_tokens: 64,
       });
       // A 200 is not enough. The Agent API can answer 200 with
       // `status: "failed"`, and a health check that reports green off the HTTP
       // code alone is exactly the confident-but-meaningless signal this repo
       // keeps finding. No `tools` here on purpose: this asks "is the endpoint
       // there and is our key good", not "did search run".
-      return response.status === "completed";
+      //
+      // `incomplete` counts as healthy. It means the answer hit the token
+      // budget above, which is a fact about the budget and not about the
+      // endpoint — and a health check that goes red because a model was chatty
+      // is wrong in the other direction, reporting a working provider as broken.
+      // Anything else, including an absent status, is a shape we do not
+      // recognise and is not called healthy.
+      return (
+        response.status === "completed" || response.status === "incomplete"
+      );
     } catch {
       return false;
     }

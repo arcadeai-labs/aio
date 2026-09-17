@@ -137,7 +137,7 @@ describe("the request the provider sends", () => {
     expect(sent[0].body).toEqual({
       model: provider.supportedModels[0],
       input: "ping",
-      max_output_tokens: 16,
+      max_output_tokens: 64,
     });
     expect(provider.supportedModels[0]).toBe("perplexity/sonar");
   });
@@ -145,6 +145,19 @@ describe("the request the provider sends", () => {
   test("healthCheck is false on a 200 that did not complete — not green off the HTTP code", async () => {
     serve({ id: "h", status: "failed", error: { message: "upstream" } });
     expect(await new PerplexityProvider().healthCheck()).toBe(false);
+  });
+
+  test("healthCheck is false on an unrecognised status, including an absent one", async () => {
+    serve({ id: "h" });
+    expect(await new PerplexityProvider().healthCheck()).toBe(false);
+  });
+
+  test("healthCheck is true when the probe merely hit its token budget", async () => {
+    // `incomplete` is a fact about `max_output_tokens`, not about the endpoint.
+    // Reporting a working provider as broken is the same class of wrong answer
+    // as reporting a broken one as working.
+    serve({ id: "h", status: "incomplete", output: [] });
+    expect(await new PerplexityProvider().healthCheck()).toBe(true);
   });
 
   test("healthCheck is false on a non-2xx", async () => {
