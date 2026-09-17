@@ -24,34 +24,51 @@ That starts Postgres, applies migrations, and serves the dashboard on
 <http://localhost:3000>. It will be empty — there is no data until you run the
 pipeline — but every page renders, and there is no sign-in to get past.
 
-To fill it:
+There are two ways to fill it, and which one you want depends on whether you
+have provider keys yet.
+
+### Fill it with no API keys — start here
+
+One template ships, `analytics.config.example.json`, and this is the path that
+uses it exactly as it is:
+
+```bash
+bun install
+cp analytics.config.example.json analytics.config.json
+bun run seed       # fifteen weeks of generated runs -> results/ and results/analysis/
+bun run ingest     # load into Postgres             -> dashboard lights up
+```
+
+No keys, no network, no waiting: a full quarter of data, every view populated,
+and an amber marker on every page saying the numbers are invented. It is also
+the right starting point for working on the dashboard itself.
+
+### Fill it with real measurements — edit the config first
 
 ```bash
 bun install
 cp .env.example .env                              # add at least one provider key
-cp analytics.config.demo.json analytics.config.json
+cp analytics.config.example.json analytics.config.json
+$EDITOR analytics.config.json                     # ← put YOUR brand in here
 
 bun run start      # ask every provider every prompt  -> results/results-<date>.jsonl
 bun run analyze    # judge each answer                -> results/analysis/
 bun run ingest     # load into Postgres              -> dashboard lights up
 ```
 
-`analytics.config.demo.json` tracks Todoist, a real and widely-written-about
-product, so the first run returns genuine mentions and rankings. When you are
-ready to track your own brand, start from `analytics.config.example.json`
-instead and edit it — and delete its `"synthetic": true` line, which exists to
-mark seeded data and would otherwise label your own measurements as invented.
+**Edit the config before you spend a cent.** The shipped template describes
+Taskwell, a brand that does not exist, so running the real pipeline against it
+unedited returns "not mentioned" from every provider and draws a clean,
+believable 0% across the whole dashboard. That is the tracker working correctly
+— nothing mentions a fictional app — but it looks exactly like a broken install,
+a bad key, or a judge that never fired, and you will have paid for the run.
+Replace `brand.name`, `aliases`, `ownedDomains`, `groundTruthDescription` and
+`knownCompetitors` with your own, rewrite `prompts/default.csv` to name your
+brand instead of Taskwell, and **delete the `"synthetic": true` line** — it
+exists to mark seeded data and would otherwise label your own measurements as
+invented.
 
-### Filling it without API keys
-
-To see the dashboard populated before you have any provider keys, or to work on
-the dashboard itself:
-
-```bash
-cp analytics.config.example.json analytics.config.json
-bun run seed       # fifteen weeks of generated runs -> results/ and results/analysis/
-bun run ingest     # load into Postgres             -> dashboard lights up
-```
+### About the seed corpus
 
 `bun run seed` makes no network calls and reads no clock. It builds a corpus
 from a fixed seed and writes it in exactly the format the real pipeline writes,

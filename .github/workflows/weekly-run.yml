@@ -15,8 +15,9 @@
 #            "Brand is configuration, never a constant"), so CI has no copy.
 #            Every way of giving it one is worse than not judging in CI:
 #            committing a config makes every fork judge against someone else's
-#            brand; shipping the demo config judges your results against
-#            Todoist; pasting the config into a repository secret turns an
+#            brand; shipping the Taskwell template judges your results against
+#            a brand that does not exist, scoring every answer "not mentioned";
+#            pasting the config into a repository secret turns an
 #            edited-often, non-secret file into a credential whose drift from
 #            the laptop copy is invisible. That last one is this project's
 #            characteristic bug: a config whose brand.name no longer matches
