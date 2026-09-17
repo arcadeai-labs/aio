@@ -59,18 +59,25 @@ through the same writer, so the dashboard is exercised against files the
 pipeline could have produced. Run it twice and you get byte-identical files;
 `SEED=anything-else bun run seed` gives a different corpus.
 
+It writes the week-over-week `comparison-DATE.json` too, for every run but the
+oldest, through the same `compareWeeks` that `bun run analyze` calls. So every
+field in [SCHEMA.md](SCHEMA.md) except `Learning` is produced by a corpus you can
+build with no API keys — including the optional ones, which appear both
+populated and absent on purpose, because a field that is always present is not
+being exercised as optional.
+
 The default is a quarter — fifteen weekly runs — because that is the timescale
 the real thing moves on, and because a corpus that leaves views empty or metrics
 flat fails at the only job seed data has. The world it renders is deliberate:
 
 - **A large, sustained branded/unbranded gap.** Taskwell is named in ~90% of
-  branded-prompt results and ~7% of unbranded ones. Toggle the segment selector
+  branded-prompt results and ~8% of unbranded ones. Toggle the segment selector
   and the whole dashboard changes.
 - **A description-accuracy recovery** from ~2.5/5 to ~4.5/5 across the middle of
   the series, so the trend has shape and week-over-week deltas have something to
   report.
 - **A competitor overtake.** TickTick climbs steadily and passes Taskwell on
-  2026-07-27, the 8th of the 15 runs. The competitive view shows the crossover.
+  2026-07-20, the 7th of the 15 runs. The competitive view shows the crossover.
 - **One provider fails for exactly one week** — `exa`, on 2026-08-03. Those
   results carry an `error` and are excluded from every cohort and denominator
   rather than counted as zeros, which is what makes that rule inspectable.

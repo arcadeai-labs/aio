@@ -176,18 +176,50 @@ describe("buildCorpus — the week-over-week join", () => {
     expect([...models]).toEqual(["exa+gpt-5.6-luna"]);
   });
 
-  test("carries promptCategory and promptMeta through untouched", () => {
+  test("carries the prompt sheet's own promptCategory and promptMeta through untouched", () => {
+    // The seeder adds `labels` and `location` on top (#34) — columns the
+    // shipped CSV has no equivalent of — but it must not touch, drop or rewrite
+    // a key the prompt sheet supplied. `brandedType` in particular is the
+    // segment axis: a rewrite here would move a prompt between halves of the
+    // dashboard's primary control.
     const branded = build().runs[0].results.filter(
       (r) => r.prompt === "What is Taskwell and who is it for?",
     );
     expect(branded.length).toBe(TARGETS.length);
     for (const r of branded) {
       expect(r.promptCategory).toBe("Brand Understanding");
-      expect(r.promptMeta).toEqual({
-        topic: "Product Overview",
-        brandedType: "Branded",
-      });
+      expect(r.promptMeta?.topic).toBe("Product Overview");
+      expect(r.promptMeta?.brandedType).toBe("Branded");
+      expect(Object.keys(r.promptMeta ?? {}).sort()).toEqual([
+        "brandedType",
+        "labels",
+        "location",
+        "topic",
+      ]);
     }
+  });
+
+  test("a prompt's meta is byte-identical in every week, as a prompt sheet's is", () => {
+    // `packages/ingest/src/transform.ts` builds the `prompts` row from whichever
+    // result for that prompt it meets first in a run. Meta that drifted between
+    // weeks would put a different `location` on the dimension depending on which
+    // week was ingested last — a value that changes with load order and nothing
+    // else.
+    const corpus = build("aio-tracer", { ...SPEC, weeks: 5 });
+    const seen = new Map<string, string>();
+    for (const run of corpus.runs) {
+      for (const r of run.results) {
+        const encoded = JSON.stringify([r.promptCategory, r.promptMeta]);
+        const first = seen.get(r.prompt);
+        if (first === undefined) seen.set(r.prompt, encoded);
+        else
+          expect({ prompt: r.prompt, encoded }).toEqual({
+            prompt: r.prompt,
+            encoded: first,
+          });
+      }
+    }
+    expect(seen.size).toBe(PROMPTS.length);
   });
 });
 

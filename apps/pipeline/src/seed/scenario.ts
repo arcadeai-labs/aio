@@ -17,9 +17,11 @@ import type {
   Citation,
   CompetitorEntry,
   JudgeModelConfig,
+  RawSearchCall,
   ResultVerdict,
   SearchQuery,
   SearchResult,
+  TokenUsage,
   UnifiedResult,
 } from "@aio/core";
 import type { PromptEntry, TargetEntry } from "../types/config.js";
@@ -41,11 +43,20 @@ import {
   accuracyTier,
   brandTopChance,
   competitorChance,
+  estimatedCostUsd,
   mentionChance,
   outageTargetIndex,
   outageWeekIndex,
   ownedCitationChance,
+  pageAgeDays,
+  pageIsDated,
+  planPromptMeta,
   providerProfile,
+  recordsCitationOffsets,
+  recordsEstimatedCost,
+  recordsPageDate,
+  recordsProviderMeta,
+  recordsScore,
   riserIndex,
   riserIsAhead,
   sampleAccuracy,
@@ -149,6 +160,77 @@ export function recordedModel(target: TargetEntry): string {
   return target.model;
 }
 
+/**
+ * A page's publication date, in the shape the provider reports it: Exa's
+ * `publishedDate` is an ISO-8601 instant, Anthropic's `page_age` is a bare
+ * date. `search_results.page_date` is a **text** column and nothing parses it,
+ * so the corpus carries both shapes rather than normalising away a difference
+ * the pipeline never normalises.
+ */
+function publishedDate(provider: string, day: string): string {
+  return provider === "exa" ? `${day}T00:00:00.000Z` : day;
+}
+
+/**
+ * `metadata.providerMeta` — a free-form bag that reaches no column, written by
+ * the two providers that have something provider-specific to say about the
+ * call (`providers/anthropic-agent.ts`, `providers/exa.ts`). Keys mirror theirs.
+ */
+function providerMetaFor(
+  target: TargetEntry,
+  sourceCount: number,
+): Record<string, unknown> {
+  if (target.provider === "exa") {
+    return {
+      synthesisProvider: target.options?.synthesisProvider ?? null,
+      synthesisModel: target.options?.synthesisModel ?? null,
+      exaResultCount: sourceCount,
+    };
+  }
+  return { sdk: "@anthropic-ai/claude-agent-sdk" };
+}
+
+/**
+ * `rawSearchCalls` — the verbatim provider payloads, which reach no column
+ * (DESIGN §4: structured-only ingest, `raw_ref` reserved for a future
+ * lazy-load). The corpus carries the *shape* of the contract, not a replica of
+ * any one provider's JSON: enough to exercise every member, including the two
+ * a reader is most likely to assume are always filled in.
+ *
+ * `queryText` is `string | null` because some providers never expose the query
+ * they ran — Perplexity and OpenRouter return annotations with no query, and
+ * both write `queryText: null` and `rawInput: null` for a single aggregate
+ * call. The rest record one call per query. Both arms are in the corpus.
+ */
+function rawCalls(
+  provider: string,
+  queries: SearchQuery[],
+  sources: SearchResult[],
+): RawSearchCall[] {
+  const found = sources.map((s) => ({ url: s.url, title: s.title }));
+
+  if (provider === "perplexity" || provider === "openrouter") {
+    if (queries.length === 0) return [];
+    return [
+      {
+        callIndex: 0,
+        timestamp: queries[0].timestamp,
+        queryText: null,
+        rawInput: null,
+        rawOutput: { citations: found.map((f) => f.url), results: found },
+      },
+    ];
+  }
+
+  return queries.map((query, callIndex) => ({
+    callIndex,
+    timestamp: query.timestamp,
+    queryText: query.query,
+    rawInput: { query: query.query },
+    rawOutput: { results: found },
+  }));
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Deterministic UUID-v4-shaped id, so seeded ids are indistinguishable in shape from `crypto.randomUUID()`. */
@@ -177,10 +259,10 @@ function shortQuery(prompt: string, rng: Rng): string {
  * gap is the corpus's largest signal and an unlabelled prompt silently landing
  * in the wrong half would shrink it without erroring.
  */
-function promptKind(prompt: PromptEntry, brand: BrandConfig): PromptKind {
-  const declared = prompt.meta?.brandedType?.trim().toLowerCase();
+function promptKind(prompt: PlannedPrompt, brand: BrandConfig): PromptKind {
+  const declared = prompt.promptMeta?.brandedType?.trim().toLowerCase();
   if (declared === "branded" || declared === "unbranded") return declared;
-  const haystack = prompt.prompt.toLowerCase();
+  const haystack = prompt.text.toLowerCase();
   return [brand.name, ...brand.aliases].some((name) =>
     haystack.includes(name.toLowerCase()),
   )
@@ -193,6 +275,74 @@ function groundTruthSentences(description: string): string[] {
   return (
     description.match(/[^.!?]+[.!?]+/g)?.map((s) => s.trim()) ?? [description]
   );
+}
+
+// ── The prompt dimension ────────────────────────────────────────────────────
+
+/**
+ * A prompt as the corpus renders it: the loaded entry, plus the
+ * `promptCategory` / `promptMeta` the records should carry. `world.ts` decides
+ * which prompt plays which role; this only applies the decision.
+ *
+ * The plan is drawn **once, before the first week**, so a prompt's meta is
+ * byte-identical in all fifteen runs — as a prompt sheet's would be, and as
+ * `packages/ingest/src/transform.ts` assumes when it builds the `prompts` row
+ * from whichever result for that prompt it sees first in a run.
+ */
+interface PlannedPrompt {
+  text: string;
+  promptCategory: string | undefined;
+  promptMeta: Record<string, string> | undefined;
+}
+
+function planPrompts(prompts: PromptEntry[], rng: Rng): PlannedPrompt[] {
+  return prompts.map((entry, index) => {
+    const plan = planPromptMeta(index, prompts.length, rng);
+    const promptCategory = plan.omitCategory ? undefined : entry.category;
+
+    if (plan.omitMeta) {
+      return { text: entry.prompt, promptCategory, promptMeta: undefined };
+    }
+
+    // The CSV's own keys are carried through untouched; `labels` and
+    // `location` are added on top, standing in for the columns the shipped
+    // `prompts/default.csv` does not have.
+    const meta: Record<string, string> = { ...entry.meta };
+    if (plan.labels !== null) meta.labels = plan.labels;
+    if (plan.location !== null) meta.location = plan.location;
+
+    return {
+      text: entry.prompt,
+      promptCategory,
+      promptMeta: Object.keys(meta).length > 0 ? meta : undefined,
+    };
+  });
+}
+
+// ── Citation offsets ────────────────────────────────────────────────────────
+
+interface Span {
+  start: number;
+  end: number;
+}
+
+/**
+ * Sentence spans of `text`, as `[start, end)` offsets into it.
+ *
+ * `providers/openai.ts` and `providers/openrouter.ts` both set
+ * `citedText = responseText.slice(startIndex, endIndex)`, so an offset here has
+ * to resolve against the response it sits on. An offset into nothing is its own
+ * silent defect: the column would be populated, the query would return a
+ * number, and the excerpt it points at would not exist.
+ */
+function sentenceSpans(text: string): Span[] {
+  const spans: Span[] = [];
+  for (const match of text.matchAll(/[^.!?]+[.!?]+/g)) {
+    const start = match.index + (match[0].length - match[0].trimStart().length);
+    const end = match.index + match[0].trimEnd().length;
+    if (end > start) spans.push({ start, end });
+  }
+  return spans;
 }
 
 // ── The corpus ──────────────────────────────────────────────────────────────
@@ -216,6 +366,9 @@ export function buildCorpus(spec: WorldSpec, rng: Rng): SeededCorpus {
     throw new Error("WorldSpec.targets is empty — nothing to render");
   }
 
+  // Drawn before the first week so every run repeats the same prompt sheet.
+  const prompts = planPrompts(spec.prompts, rng);
+
   const runs: SeededRun[] = [];
 
   // Oldest first, most recent last, exactly 7 days apart.
@@ -223,6 +376,7 @@ export function buildCorpus(spec: WorldSpec, rng: Rng): SeededCorpus {
     runs.push(
       buildRun(
         spec,
+        prompts,
         week,
         shiftDays(spec.anchorDate, -7 * (spec.weeks - 1 - week)),
         rng,
@@ -235,6 +389,7 @@ export function buildCorpus(spec: WorldSpec, rng: Rng): SeededCorpus {
 
 function buildRun(
   spec: WorldSpec,
+  prompts: PlannedPrompt[],
   week: number,
   runDate: string,
   rng: Rng,
@@ -246,7 +401,7 @@ function buildRun(
   const outageTarget = outageTargetIndex(spec.targets.length);
 
   let index = 0;
-  for (const prompt of spec.prompts) {
+  for (const prompt of prompts) {
     for (const [targetIndex, target] of spec.targets.entries()) {
       const { result, verdict } = buildCell({
         spec,
@@ -282,7 +437,7 @@ function buildCell(args: {
   spec: WorldSpec;
   runDate: string;
   runId: string;
-  prompt: PromptEntry;
+  prompt: PlannedPrompt;
   target: TargetEntry;
   targetIndex: number;
   /** 0 at the oldest run, 1 at the newest. */
@@ -335,9 +490,9 @@ function buildCell(args: {
     return {
       result: {
         id,
-        prompt: prompt.prompt,
-        promptCategory: prompt.category,
-        promptMeta: prompt.meta,
+        prompt: prompt.text,
+        promptCategory: prompt.promptCategory,
+        promptMeta: prompt.promptMeta,
         searchQueries: [],
         searchResults: [],
         responseText: "",
@@ -426,6 +581,24 @@ function buildCell(args: {
   const searchResults: SearchResult[] = [];
   const ownedUrls: string[] = [];
 
+  // `score` and `pageDate` are populated by exactly the providers that populate
+  // them for real — Exa returns a relevance score, Exa and Anthropic report a
+  // publication date — so `score IS NULL` reads as "this provider does not
+  // score", which is what it means on a real run. See world.ts §7.
+  const scored = recordsScore(target.provider);
+  const dated = recordsPageDate(target.provider);
+  const sourceExtras = (): Pick<SearchResult, "score" | "pageDate"> => {
+    const extras: Pick<SearchResult, "score" | "pageDate"> = {};
+    if (scored) extras.score = Math.round(rng.next() * 1000) / 1000;
+    if (dated && pageIsDated(rng)) {
+      extras.pageDate = publishedDate(
+        target.provider,
+        shiftDays(runDate, -pageAgeDays(rng)),
+      );
+    }
+    return extras;
+  };
+
   const ownedCited =
     mentioned &&
     brand.ownedDomains.length > 0 &&
@@ -443,7 +616,7 @@ function buildCell(args: {
           "",
           rng,
         ) ?? brand.groundTruthDescription,
-      score: Math.round(rng.next() * 1000) / 1000,
+      ...sourceExtras(),
     });
   }
 
@@ -465,16 +638,16 @@ function buildCell(args: {
           rng,
         ) ??
         `${competitor.name} is covered in most comparisons of this category.`,
-      score: Math.round(rng.next() * 1000) / 1000,
+      ...sourceExtras(),
     });
   }
 
   for (const source of rng.sample(GENERIC_SOURCES, rng.int(1, 3))) {
     searchResults.push({
-      url: `https://${source.host}/${slug(prompt.prompt).slice(0, 48)}`,
-      title: `${source.label}: ${prompt.prompt}`,
+      url: `https://${source.host}/${slug(prompt.text).slice(0, 48)}`,
+      title: `${source.label}: ${prompt.text}`,
       snippet: book.take(source.snippets, "", rng) ?? source.label,
-      score: Math.round(rng.next() * 1000) / 1000,
+      ...sourceExtras(),
     });
   }
 
@@ -491,46 +664,94 @@ function buildCell(args: {
     }
   }
 
-  const citations: Citation[] = cited.map((source) => ({
-    url: source.url,
-    title: source.title,
-    citedText: source.snippet ?? "",
-  }));
+  // OpenAI and OpenRouter annotate the answer itself: each citation carries the
+  // offsets of the span that referenced the URL, and `citedText` is that span,
+  // verbatim (`providers/openai.ts`, `providers/openrouter.ts`). The other four
+  // quote the source's own snippet and carry no offsets at all. Both shapes are
+  // in the corpus, and where the offsets exist they resolve — `citedText` is
+  // sliced out of `responseText` here rather than written alongside it, so the
+  // two cannot drift apart.
+  //
+  // One annotation per span, in the order the answer reaches them: a source
+  // past the last sentence is left unannotated rather than made to share a
+  // span, which keeps "no two citations on one result quote the same string"
+  // true of the whole corpus. On the shipped corpus that tail is one result in
+  // 480.
+  const spans = recordsCitationOffsets(target.provider)
+    ? rng.sample(sentenceSpans(responseText), cited.length)
+    : [];
+  const citations: Citation[] = cited.map((source, i) => {
+    const span = spans[i];
+    if (!span) {
+      return {
+        url: source.url,
+        title: source.title,
+        citedText: source.snippet ?? "",
+      };
+    }
+    return {
+      url: source.url,
+      title: source.title,
+      citedText: responseText.slice(span.start, span.end),
+      startIndex: span.start,
+      endIndex: span.end,
+    };
+  });
 
   const searchQueries: SearchQuery[] = [];
   for (let i = 0; i < rng.int(1, 3); i++) {
     searchQueries.push({
-      query: shortQuery(prompt.prompt, rng),
+      query: shortQuery(prompt.text, rng),
       timestamp: stampAt(runDate, RUN_START_HOUR_UTC, offset + i + 1),
     });
   }
 
+  const tokenUsage: TokenUsage = {
+    inputTokens: 120 + prompt.text.length + rng.int(0, 200),
+    outputTokens: Math.ceil(responseText.length / 4) + rng.int(0, 120),
+    searchRequests: searchQueries.length,
+  };
+
   const result: UnifiedResult = {
     id,
-    prompt: prompt.prompt,
-    promptCategory: prompt.category,
-    promptMeta: prompt.meta,
+    prompt: prompt.text,
+    promptCategory: prompt.promptCategory,
+    promptMeta: prompt.promptMeta,
     searchQueries,
     searchResults,
     responseText,
     citations,
+    rawSearchCalls: rawCalls(target.provider, searchQueries, searchResults),
     metadata: {
       ...metadataBase,
-      tokenUsage: {
-        inputTokens: 120 + prompt.prompt.length + rng.int(0, 200),
-        outputTokens: Math.ceil(responseText.length / 4) + rng.int(0, 120),
-        searchRequests: searchQueries.length,
-      },
+      tokenUsage,
+      // Only the agent provider meters itself, and only it reports a cost
+      // (`providers/anthropic-agent.ts`). The value is derived from the token
+      // counts above rather than drawn beside them: the result page prints
+      // both, and a cost that disagreed with its own tokens would be the kind
+      // of plausible number nobody can falsify by looking.
+      ...(recordsEstimatedCost(target.provider)
+        ? {
+            estimatedCostUsd: estimatedCostUsd({
+              inputTokens: tokenUsage.inputTokens ?? 0,
+              outputTokens: tokenUsage.outputTokens ?? 0,
+              searchRequests: tokenUsage.searchRequests ?? 0,
+            }),
+          }
+        : {}),
+      ...(recordsProviderMeta(target.provider)
+        ? { providerMeta: providerMetaFor(target, searchResults.length) }
+        : {}),
     },
     error: null,
   };
 
   const verdict: ResultVerdict = {
     resultId: id,
-    prompt: prompt.prompt,
+    prompt: prompt.text,
     provider: target.provider,
     model,
-    promptCategory: prompt.category ?? null,
+    promptCategory: prompt.promptCategory ?? null,
     brandMention: {
       mentioned,
       mentionCount: excerpts.length,

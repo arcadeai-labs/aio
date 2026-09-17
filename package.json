@@ -22,8 +22,10 @@
     "typecheck": "bun run --filter '@aio/*' typecheck"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1",
+    "@happy-dom/global-registrator": "^20.14.5",
     "@types/bun": "latest",
-    "typescript": "^5.7",
-    "@biomejs/biome": "^1"
+    "happy-dom": "^20.14.5",
+    "typescript": "^5.7"
   }
 }
