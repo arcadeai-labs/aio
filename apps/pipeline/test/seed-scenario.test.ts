@@ -473,3 +473,59 @@ describe("seed purity", () => {
     }
   });
 });
+
+// The seeded corpus exists so the dashboard can be exercised without
+// credentials, which only works while synthetic rows carry the same shapes real
+// ones do. `rawSearchCalls` has three of them, and the Perplexity arm changed
+// when #16 moved that provider to the Agent API: it used to be unable to report
+// what it searched (`queryText: null`) and now reports it. A seed left on the
+// old arm would model a provider that no longer exists — invisibly, because
+// nothing downstream reads these payloads today.
+describe("buildCorpus — rawSearchCalls mirror the providers they stand in for", () => {
+  const MIXED: WorldSpec = {
+    ...SPEC,
+    targets: [
+      { provider: "openai", model: "gpt-5.6-terra" },
+      { provider: "perplexity", model: "perplexity/sonar" },
+      { provider: "openrouter", model: "openai/gpt-5.6-terra:online" },
+    ],
+  };
+
+  function callsFor(provider: string) {
+    const corpus = build("aio-tracer", MIXED);
+    const calls = corpus.runs
+      .flatMap((run) => run.results)
+      .filter((r) => r.metadata.provider === provider)
+      .flatMap((r) => r.rawSearchCalls ?? []);
+    // Without this the assertions below pass over an empty list and prove
+    // nothing — the exact shape of green this repo keeps finding.
+    expect(calls.length).toBeGreaterThan(0);
+    return calls;
+  }
+
+  test("perplexity records one aggregate call that names its queries", () => {
+    for (const call of callsFor("perplexity")) {
+      expect(call.callIndex).toBe(0);
+      expect(typeof call.queryText).toBe("string");
+      expect(call.queryText).not.toBe("");
+      expect(call.rawInput).toHaveProperty("queries");
+    }
+  });
+
+  test("openrouter still records the null-query arm, so the corpus keeps covering it", () => {
+    for (const call of callsFor("openrouter")) {
+      expect(call.queryText).toBeNull();
+      expect(call.rawInput).toBeNull();
+    }
+  });
+
+  test("openai records one call per query", () => {
+    const calls = callsFor("openai");
+    for (const call of calls) {
+      expect(typeof call.queryText).toBe("string");
+      expect(call.rawInput).toHaveProperty("query");
+    }
+    // The per-query arm is the one that can produce more than one call.
+    expect(calls.some((c) => c.callIndex > 0)).toBe(true);
+  });
+});
