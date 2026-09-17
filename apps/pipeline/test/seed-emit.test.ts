@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BrandConfig, ResultVerdict, UnifiedResult } from "@aio/core";
+import { compareWeeks } from "../src/analytics/comparator.js";
 import { emitCorpus } from "../src/seed/emit.js";
 import { createRng } from "../src/seed/rng.js";
 import { type WorldSpec, buildCorpus } from "../src/seed/scenario.js";
@@ -87,9 +88,12 @@ describe("emitCorpus", () => {
       "results-2026-09-07.jsonl",
       "results-2026-09-14.jsonl",
     ]);
+    // One comparison, not two: the oldest run has no previous week to compare
+    // against, exactly as `bun run analyze` finds none on the first week.
     expect((await readdir(analysisDir)).sort()).toEqual([
       "analysis-2026-09-07.jsonl",
       "analysis-2026-09-14.jsonl",
+      "comparison-2026-09-14.json",
     ]);
   });
 
@@ -110,6 +114,39 @@ describe("emitCorpus", () => {
       expect(verdicts.length).toBe(run.verdictCount);
       expect(run.resultCount).toBe(PROMPTS.length * TARGETS.length);
     }
+
+    expect(emitted[0].comparisonPath).toBeNull();
+    expect(emitted[1].comparisonPath).toBe(
+      join(analysisDir, "comparison-2026-09-14.json"),
+    );
+  });
+
+  test("the comparison is the shipped comparator's output, not a second one", async () => {
+    // `compareWeeks` is what `bun run analyze` writes into this file. Asserting
+    // against it rather than against a hand-built expectation is the point: a
+    // fixture that agreed with SCHEMA.md while disagreeing with the comparator
+    // would verify nothing.
+    const built = corpus();
+    const emitted = await emit();
+    const path = emitted[1].comparisonPath;
+    expect(path).not.toBeNull();
+
+    const written = JSON.parse(await readFile(path as string, "utf-8"));
+    expect(written).toEqual(
+      JSON.parse(
+        JSON.stringify(
+          compareWeeks(
+            built.runs[1].verdicts,
+            built.runs[0].verdicts,
+            "2026-09-14",
+            "2026-09-07",
+          ),
+        ),
+      ),
+    );
+    // A comparison over two real weeks of the corpus, not an empty shell.
+    expect(written.deltas.length).toBeGreaterThan(0);
+    expect(written.summary.totalResults).toBeGreaterThan(0);
   });
 
   test("records round-trip through JSONL unchanged", async () => {
@@ -172,7 +209,7 @@ describe("emitCorpus", () => {
     await rm(dir, { recursive: true, force: true });
     const emitted = await emit();
     expect(emitted.length).toBe(2);
-    expect((await readdir(analysisDir)).length).toBe(2);
+    expect((await readdir(analysisDir)).length).toBe(3);
   });
 
   test("a different seed writes the same filenames with different content", async () => {

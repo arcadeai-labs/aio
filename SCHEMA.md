@@ -50,62 +50,101 @@ run by `test/schema-doc.test.ts`, which parses this file.
 Confirming a field against **data** is a separate and weaker claim, because it
 depends on the corpus having produced the field at all. The credential-free
 corpus (`bun run seed && bun run ingest` — 15 runs, 1,440 results, 1,424
-verdicts) does not exercise everything. Three tiers, stated plainly:
+verdicts, 5,623 search results, 3,578 citations) now exercises every field on
+every record type it produces. Three tiers, stated plainly:
 
 | Tier | What it means | Covers |
 |------|---------------|--------|
-| **Confirmed against an ingested row** | A real row was queried out of Postgres with this field populated | `UnifiedResult`, `SearchQuery`, `SearchResult`, `Citation`, `RunMetadata`, `TokenUsage`, `RunError`, `ResultVerdict` and all its children — except the fields marked † |
-| **Confirmed against real data, no row by design** | Computed from real corpus verdicts by the shipped code; there is no table to query | `WeekComparison`, `ResultDelta`, `WeekComparisonSummary` — every field exercised by `compareWeeks` over two real corpus weeks |
-| **Not exercised by the seeded corpus** † | Contract and destination column verified in code; **no row has ever carried a value**. Treat the Description column as a claim about the producer, not an observation | the six fields marked † below, plus `Learning` and `LearningEvidence` |
+| **Confirmed against an ingested row** | A real row was queried out of Postgres with this field populated | `UnifiedResult`, `SearchQuery`, `SearchResult`, `Citation`, `RunMetadata`, `TokenUsage`, `RunError`, `ResultVerdict` and all its children — **every field, with no exceptions** |
+| **Confirmed against real data, no row by design** | Computed by the shipped code; there is no table to query | `WeekComparison`, `ResultDelta`, `WeekComparisonSummary`, and the fields marked `**—**` |
+| **Not produced by the seeded corpus** † | Contract and validator verified in code; **no record has ever been observed**. Treat the Description column as a claim about the producer, not an observation | `Learning` and `LearningEvidence` |
 
-**The fields marked † in this document:**
+**Every optional field is exercised both ways.** An optional field that is populated on every row is not being exercised as
+optional. The bug that hides behind it is a query that silently drops rows
+because a field is missing — a `JOIN` or a `WHERE` calibrated against a corpus
+where the column was never `NULL`. So each one below occurs populated **and**
+`NULL`, and which rows carry it follows the provider that writes it for real
+(`apps/pipeline/src/providers/*.ts`) rather than being sprayed across the corpus:
 
-| Field | Seeded coverage | Why it is empty |
-|-------|-----------------|-----------------|
-| `RunMetadata.estimatedCostUsd` | 0 / 1,440 results | Only `anthropic-agent` populates it; the seed generator emits no cost |
-| `SearchResult.pageDate` | 0 / 5,558 search results | Only `exa` and `anthropic` populate it |
-| `Citation.startIndex` | 0 / 3,571 citations | Only `openai` and `openrouter` populate it |
-| `Citation.endIndex` | 0 / 3,571 citations | Same providers |
-| `promptMeta.location` | 0 / 16 prompts | Shipped `prompts/default.csv` has no `location` column |
-| `promptMeta.labels` | 0 rows in `prompt_labels` | Shipped `prompts/default.csv` has no `labels` column |
+| Field / column | Populated | Total | Who writes it |
+|----------------|-----------|-------|---------------|
+| `RunMetadata.estimatedCostUsd` → `results.estimated_cost_usd` | 240 | 1,440 | only `anthropic-agent` |
+| `SearchResult.score` → `search_results.score` | 902 | 5,623 | only `exa` |
+| `SearchResult.pageDate` → `search_results.page_date` | 1,301 | 5,623 | `anthropic` and `exa`, and only for pages that carry a date |
+| `Citation.startIndex` → `citations.start_index` | 1,216 | 3,578 | only `openai` and `openrouter` |
+| `Citation.endIndex` → `citations.end_index` | 1,216 | 3,578 | same |
+| `UnifiedResult.promptCategory` → `results.run_theme` | 1,350 | 1,440 | absent for one prompt, which lands in the null-theme bucket |
+| `promptMeta.brandedType` → `results.run_branded_type` | 1,350 | 1,440 | absent for the one prompt that carries no `promptMeta` at all |
+| `promptMeta.location` → `prompts.location` | 8 | 16 prompts | |
+| `promptMeta.labels` → `prompt_labels` | 14 | 16 prompts | 35 label rows over 6 distinct labels |
+| `tokenUsage.inputTokens` / `outputTokens` | 1,424 | 1,440 | absent on exactly the 16 errored rows, which carry `tokenUsage: {}` |
 
-The gap is at the **source**, not at ingest: these keys are absent from
-`results-*.jsonl` itself (`promptMeta` in the shipped corpus has exactly two
-keys, `brandedType` and `topic`), so the ingest path for them is *untested*
-rather than known-broken.
+Two of those are worth reading twice, because they are the cases a corpus
+usually misses:
 
-`Learning` and `LearningEvidence` are a harder case. The only registered
-generator (`movers`, tier `structured`) issues a live judge-model call, so a
-credential-free corpus cannot produce one at all. Both contracts are documented
-from `packages/core/src/learning.ts` and its shipped validator
+- One prompt carries **no `promptMeta` key at all** and another carries **no
+  `promptCategory`**, so `run_branded_type IS NULL` and `run_theme IS NULL` are
+  both reachable — the null-theme bucket in `packages/db/src/metrics.ts` had
+  never seen a row before.
+- One prompt's `labels` string **repeats a label**
+  (`"SALES_COMPANY, COMPETITIVE_SET, PLATFORM_COVERAGE, SALES_COMPANY"`), so
+  `parseLabels`' de-duplication produces three `prompt_labels` rows from four
+  comma-separated entries. Without a repeat somewhere, that arm of the split is
+  exercised by nothing and could be deleted without a test noticing.
+
+The shipped `prompts/default.csv` has no `location` or `labels` column, and it
+could not supply the absent case even if it did: `util/csv-loader.ts` fills every
+declared column on every row, so a blank cell arrives as `""`, not as a missing
+key. The seeder therefore supplies both keys itself
+(`apps/pipeline/src/seed/world.ts` §7), standing in for a richer prompt sheet
+than the one in the repo. Which prompt plays which role is **positional**, not
+sampled, so the coverage above holds under any `SEED=…`, not just the shipped
+one.
+
+`Learning` and `LearningEvidence` are the one thing still outside this corpus's
+reach, and deliberately so. The only registered generator (`movers`, tier
+`structured`) issues a **live judge-model call**
+(`apps/pipeline/src/learnings/index.ts` constructs an `OpenAI` client before any
+generator runs), so `bun run learnings` cannot complete without a credential and
+a credential-free corpus cannot produce a record. The seeder does not fabricate
+one: a second producer writing `Learning` files that no real run ever wrote would
+be a fixture agreeing with this document while disagreeing with the pipeline,
+which is worse than an honest gap. Both contracts are documented from
+`packages/core/src/learning.ts` and its shipped validator
 `apps/pipeline/src/learnings/validate.ts`, and held to the contract by the
-field-name guard — but **no `Learning` record has been observed**.
+field-name guard — but **no `Learning` record has been observed**. Closing that
+needs a credential-free generator in the registry, not a change to the seeder.
 
-Closing this gap is **[#34](https://github.com/arcadeai-labs/aio/issues/34)**,
-which extends the seed corpus to exercise these fields. It is blocked on this PR
-so that it is measured against a corrected document. Until it lands, a † row is
-the document telling you it has not been watched working.
+`WeekComparison` is *not* in that position any more. `bun run seed` writes
+`comparison-YYYY-MM-DD.json` for every run but the oldest, through the same
+`compareWeeks` that `bun run analyze` calls — so every field on `WeekComparison`,
+`ResultDelta` and `WeekComparisonSummary` is produced by the shipped comparator
+over the credential-free corpus. There is still no table behind it, by design.
+
+This is what **[#34](https://github.com/arcadeai-labs/aio/issues/34)** changed.
+Before it, six fields carried a † here and the only way to check them was a
+credentialed run against real providers; the document-versus-row check can now be
+run end to end with **no credentials and no API keys**.
 
 Fields that reach **no column at all** are a different thing again, marked
 `**—**` in the DB column and listed in full under
-[not ingested](#not-ingested). Those are verified: the absence is the fact.
+[not ingested](#not-ingested). Those are verified: the absence is the fact. The
+corpus produces them too — `rawSearchCalls` on every non-errored result,
+`providerMeta` on the two providers that write one — so the shape is observable
+in `results-*.jsonl` even though no query can reach it.
 
-### Optional in the contract, always present in the corpus
+### No field is optional in the contract and present on every row
 
-The trap above runs the other way too. Three fields are declared optional in
-TypeScript and are populated on **every** row the seed corpus produces, so code
-written and validated against seeded data can omit a null check that a real run
-will eventually need:
+The trap above used to run the other way too. Until #34, three fields —
+`UnifiedResult.promptCategory`, `UnifiedResult.promptMeta` and
+`SearchResult.score` — were declared optional in TypeScript and populated on
+**every** row the seed corpus produced. Code written and validated against that
+data could omit a null check a real run would eventually need, and no test would
+have caught it, because the corpus itself taught the wrong guarantee.
 
-| Field | Type | Seeded coverage | Why it is not a guarantee |
-|-------|------|-----------------|---------------------------|
-| `UnifiedResult.promptCategory` | `string?` | 1,440 / 1,440 | A prompts CSV with no `category` **and** no `theme_name` column yields `undefined` |
-| `UnifiedResult.promptMeta` | `Record<string,string>?` | 1,440 / 1,440 | `undefined` when the CSV has no columns beyond `prompt` — the shipped CSV always has `topic` and `brandedType` |
-| `SearchResult.score` | `number?` | 5,558 / 5,558 | Only set when the provider returns a relevance score; the seed generator always emits one |
-
-The genuinely optional pair behaves as documented: `tokenUsage.inputTokens` and
-`outputTokens` are present on 1,424 of 1,440 results — absent on exactly the 16
-errored rows, which carry `tokenUsage: {}`.
+That is no longer true of anything: every field declared optional in
+`packages/core` now occurs `NULL` somewhere in the corpus, per the table above.
+Read `?` in the type as a real possibility, and write the null check.
 
 ---
 
@@ -163,9 +202,12 @@ run_branded_type | branded                  <- the CSV's brandedType, lowercased
 ```
 
 and `topic` reaches no column at all. Across the whole seeded corpus the
-distinct `results.run_theme` set is exactly the CSV's five `category` values and
-shares no value with the eleven `topic` values, so the two cannot be confused by
-accident.
+distinct non-null `results.run_theme` set is exactly the CSV's five `category`
+values and shares no value with the eleven `topic` values, so the two cannot be
+confused by accident. 90 of the 1,440 rows — one prompt across all fifteen
+weeks — carry `run_theme = NULL`, which is what a prompt sheet with neither a
+`theme_name` nor a `category` column produces and what the null-theme bucket in
+`packages/db/src/metrics.ts` exists for.
 
 `DESIGN.md` §6 previously described only the legacy dialect and was corrected to
 match the loader on 2026-09-16 (issue #11). **The code is authoritative**; §6 and
@@ -180,8 +222,8 @@ ingest. Every other key — including `topic` in the shipped
 | Key | DB column | Notes |
 |-----|-----------|-------|
 | `brandedType` | `results.run_branded_type`, `prompts.branded_type` | Lowercased; anything other than `branded`/`unbranded` becomes `NULL` |
-| `location` | `prompts.location` | **†** not exercised by the seeded corpus (0 / 16) — the shipped CSV has no `location` column |
-| `labels` | `prompt_labels.label` | Comma-separated string, split and de-duped. Modeled, not surfaced in v1. **†** not exercised by the seeded corpus (0 rows) |
+| `location` | `prompts.location` | A market code. The shipped CSV has no `location` column; the seeder supplies one on 8 of the 16 prompts and leaves the key off the rest, so both states reach the column |
+| `labels` | `prompt_labels.label` | Comma-separated **string**, split on `,`, trimmed and de-duped through a `Set` (`parseLabels`). Modeled, not surfaced in v1. 14 of the 16 seeded prompts carry it — 35 rows, 6 distinct labels — and one of those strings repeats a label so the de-dup arm has something to collapse |
 | *(anything else)* | **—** | |
 
 ### `SearchQuery`
@@ -202,8 +244,8 @@ Ingested into `search_results`, one row per element.
 | `url` | `string` | `search_results.url` | URL of the search result |
 | `title` | `string` | `search_results.title` | Page title (column is nullable) |
 | `snippet` | `string` | `search_results.snippet` | Snippet / summary text (column is nullable) |
-| `score` | `number?` | `search_results.score` | Relevance score (when the provider returns one) |
-| `pageDate` | `string?` | `search_results.page_date` | Publication date of the page. Only `exa` and `anthropic` populate it. **†** not exercised by the seeded corpus (0 / 5,558) |
+| `score` | `number?` | `search_results.score` | Relevance score. **Only `exa` returns one** — 902 / 5,623 seeded, `NULL` for the other five providers |
+| `pageDate` | `string?` | `search_results.page_date` | Publication date of the page. Only `exa` and `anthropic` populate it, and only for pages that carry one — 1,301 / 5,623 seeded. The column is **text** and nothing parses it, so the two shapes the providers report both land verbatim: Exa's ISO instant (`2025-04-02T00:00:00.000Z`) and Anthropic's bare date (`2025-04-02`) |
 
 ### `Citation`
 
@@ -214,8 +256,8 @@ Ingested into `citations`, one row per element.
 | `url` | `string` | `citations.url` | Cited URL |
 | `title` | `string` | `citations.title` | Title of the cited page (column is nullable) |
 | `citedText` | `string` | `citations.cited_text` | The passage from the response that references this URL (column is nullable) |
-| `startIndex` | `number?` | `citations.start_index` | Character offset where the citation starts in `responseText`. Only `openai` and `openrouter` populate it. **†** not exercised by the seeded corpus (0 / 3,571) |
-| `endIndex` | `number?` | `citations.end_index` | Character offset where the citation ends in `responseText`. Same providers as above. **†** not exercised by the seeded corpus (0 / 3,571) |
+| `startIndex` | `number?` | `citations.start_index` | Character offset where the citation starts in `responseText`. Only `openai` and `openrouter` populate it — 1,216 / 3,578 seeded. Where it is set, `citedText` is exactly `responseText.slice(startIndex, endIndex)`; the other four providers quote the *source's* snippet and set no offsets |
+| `endIndex` | `number?` | `citations.end_index` | Character offset where the citation ends in `responseText`. Same providers as above, same 1,216 / 3,578 |
 
 ### `RunMetadata`
 
@@ -230,7 +272,7 @@ Flattened onto the `results` row.
 | `completedAt` | `string` | `results.completed_at` | ISO-8601 completion time |
 | `latencyMs` | `number` | `results.latency_ms` | Wall-clock time in milliseconds |
 | `tokenUsage` | `TokenUsage` | see below | Token counts for the run |
-| `estimatedCostUsd` | `number?` | `results.estimated_cost_usd` | Estimated API cost in USD. **Only `anthropic-agent` populates it** — `NULL` for the other five providers. **†** not exercised by the seeded corpus (0 / 1,440) |
+| `estimatedCostUsd` | `number?` | `results.estimated_cost_usd` | Estimated API cost in USD. **Only `anthropic-agent` populates it** — `NULL` for the other five providers, so 240 / 1,440 seeded |
 | `runId` | `string` | **—** | UUID for the overall run batch. One per dated file; the DB keys runs by `run_date` instead |
 | `providerMeta` | `Record<string, unknown>?` | **—** | Provider-specific metadata |
 

@@ -249,3 +249,197 @@ const PROVIDER_PROFILES: readonly ProviderProfile[] = [
 export function providerProfile(targetIndex: number): ProviderProfile {
   return PROVIDER_PROFILES[targetIndex % PROVIDER_PROFILES.length];
 }
+
+// ── 7. The optional fields ──────────────────────────────────────────────────
+// SCHEMA.md documents six optional fields that the corpus never produced, so
+// the only way to check the document against them was a credentialed run
+// (#34). Everything below exists to close that, under two rules.
+//
+// **Fidelity.** An optional field is populated by exactly the providers that
+// populate it in `src/providers/*.ts`, and by no others. A field seeded onto
+// every row would agree with the contract and disagree with the pipeline, and
+// a query calibrated against it would come back wrong on real data — which is
+// this project's characteristic failure, not a cosmetic one.
+//
+// **Both paths.** An optional field that is always present is not being
+// exercised as optional; the bug this catches is a query that silently drops
+// rows because a field is missing. So every one of them is absent somewhere,
+// and the absences are *positional* rather than sampled — a probabilistic
+// absence would hold for the shipped seed and could vanish under `SEED=…`,
+// leaving a property test green over a corpus that no longer demonstrates it.
+
+/** Providers that record `metadata.estimatedCostUsd` (providers/anthropic-agent.ts). */
+const COST_PROVIDERS = new Set(["anthropic-agent"]);
+/** Providers that record `SearchResult.pageDate` (providers/anthropic.ts, providers/exa.ts). */
+const PAGE_DATE_PROVIDERS = new Set(["anthropic", "exa"]);
+/** Providers that record `Citation.startIndex`/`endIndex` (providers/openai.ts, providers/openrouter.ts). */
+const CITATION_OFFSET_PROVIDERS = new Set(["openai", "openrouter"]);
+/** Providers that record `SearchResult.score` — only Exa returns a relevance score. */
+const SCORE_PROVIDERS = new Set(["exa"]);
+/** Providers that record `metadata.providerMeta` (providers/anthropic-agent.ts, providers/exa.ts). */
+const PROVIDER_META_PROVIDERS = new Set(["anthropic-agent", "exa"]);
+
+export function recordsEstimatedCost(provider: string): boolean {
+  return COST_PROVIDERS.has(provider);
+}
+
+export function recordsPageDate(provider: string): boolean {
+  return PAGE_DATE_PROVIDERS.has(provider);
+}
+
+export function recordsCitationOffsets(provider: string): boolean {
+  return CITATION_OFFSET_PROVIDERS.has(provider);
+}
+
+export function recordsScore(provider: string): boolean {
+  return SCORE_PROVIDERS.has(provider);
+}
+
+export function recordsProviderMeta(provider: string): boolean {
+  return PROVIDER_META_PROVIDERS.has(provider);
+}
+
+/**
+ * P(a returned page carries a publication date | the provider records them).
+ * Below 1 on purpose: Anthropic's `page_age` and Exa's `publishedDate` are
+ * both absent for a good share of real pages, so `page_date IS NULL` has to
+ * mean "undated page", not "provider that does not report dates".
+ */
+const PAGE_DATE_CHANCE = 0.7;
+
+/** How far back a dated page was published, in days. */
+const PAGE_AGE_MIN_DAYS = 3;
+const PAGE_AGE_MAX_DAYS = 1_400;
+
+export function pageIsDated(rng: Rng): boolean {
+  return rng.chance(PAGE_DATE_CHANCE);
+}
+
+/** How many days before the run a dated page was published. */
+export function pageAgeDays(rng: Rng): number {
+  return rng.int(PAGE_AGE_MIN_DAYS, PAGE_AGE_MAX_DAYS);
+}
+
+// Cost is *derived* from the row's own token counts rather than drawn beside
+// them. The result page prints tokens and cost next to each other, and a cost
+// that contradicted the tokens above it would be precisely the plausible,
+// unfalsifiable number this corpus exists not to produce. Rates are the
+// published per-million prices for the tier `anthropic-agent` runs, plus the
+// per-request server-side search fee; they vary only through the token counts,
+// which come from the injected `Rng`.
+const USD_PER_INPUT_TOKEN = 3 / 1_000_000;
+const USD_PER_OUTPUT_TOKEN = 15 / 1_000_000;
+const USD_PER_SEARCH_REQUEST = 0.01;
+
+export function estimatedCostUsd(tokens: {
+  inputTokens: number;
+  outputTokens: number;
+  searchRequests: number;
+}): number {
+  const usd =
+    tokens.inputTokens * USD_PER_INPUT_TOKEN +
+    tokens.outputTokens * USD_PER_OUTPUT_TOKEN +
+    tokens.searchRequests * USD_PER_SEARCH_REQUEST;
+  // Six places: the dashboard renders four, and a float tail would put
+  // 0.0300000000000000004 in a JSONL file a human reads.
+  return Math.round(usd * 1_000_000) / 1_000_000;
+}
+
+// ── The prompt dimension's optional keys ────────────────────────────────────
+//
+// `promptMeta.location` and `promptMeta.labels` come from columns the shipped
+// `prompts/default.csv` does not have, and the CSV cannot supply the *absent*
+// case anyway: `util/csv-loader.ts` fills every declared column on every row,
+// so a blank cell arrives as `""`, not as a missing key. The seeder therefore
+// stands in for a richer prompt sheet than the one in the repo — which is what
+// a test fixture is for. Values are drawn from the injected `Rng`; which
+// prompt gets which *role* is positional, so the coverage holds under any seed.
+
+/**
+ * The label vocabulary. Screaming-snake keys grouped by what they classify,
+ * matching the shape recorded on issue #34 from a real credentialed corpus:
+ * one comma-joined string per prompt, several labels deep.
+ */
+const PROMPT_LABEL_VOCABULARY: readonly string[] = [
+  "KEYWORDS_HIGH_IMPORTANCE",
+  "KEYWORDS_OTHER",
+  "SALES_COMPANY",
+  "COMPETITIVE_SET",
+  "PRICING_SENSITIVE",
+  "PLATFORM_COVERAGE",
+];
+
+/**
+ * Markets a prompt can be pinned to. `prompts.location` has never carried a
+ * value from any corpus, real or seeded, so there is no observed shape to
+ * copy; these are the seeder's own choice and SCHEMA.md says so.
+ */
+const PROMPT_LOCATIONS: readonly string[] = ["US", "GB", "DE", "AU", "CA"];
+
+/**
+ * Below this many prompts every prompt is ordinary. The absence cases take a
+ * fixed number of prompts out of the segment and theme dimensions, and on a
+ * three-prompt sheet that is most of the world rather than an edge of it.
+ */
+const MIN_PROMPTS_FOR_ABSENCE = 4;
+
+/** What a prompt's `promptMeta` and `promptCategory` should look like. */
+export interface PromptMetaPlan {
+  /** Emit no `promptMeta` key at all — a CSV with no columns past `prompt`. */
+  omitMeta: boolean;
+  /** Emit no `promptCategory` — a CSV with neither `theme_name` nor `category`. */
+  omitCategory: boolean;
+  /** The comma-joined `labels` value, or null to leave the key off. */
+  labels: string | null;
+  /** The `location` value, or null to leave the key off. */
+  location: string | null;
+}
+
+/**
+ * The role prompt `index` of `count` plays in optional-field coverage. Called
+ * once per prompt, in order, before any run is rendered — so a prompt's meta is
+ * identical in all fifteen weeks, as a prompt sheet's would be.
+ *
+ * The roles, in order of the questions they answer:
+ *
+ *   last prompt         no `promptMeta` at all — is `promptMeta` really optional?
+ *   second to last      no `promptCategory`    — does the null-theme bucket work?
+ *   first prompt        meta, but no `labels`  — does an unlabelled prompt ingest?
+ *   second prompt       a label repeated       — does `parseLabels` de-dupe?
+ *   odd-indexed         no `location`          — both paths on the prompt row
+ *
+ * The middle two are the ones a reader is most likely to think redundant.
+ * `parseLabels` (`packages/ingest/src/normalize.ts`) splits on `,`, trims and
+ * de-dupes through a `Set`; without a repeat in the corpus, the de-dup arm is
+ * exercised by nothing, and a rewrite that dropped it would ingest cleanly.
+ */
+export function planPromptMeta(
+  index: number,
+  count: number,
+  rng: Rng,
+): PromptMetaPlan {
+  const absencesAffordable = count >= MIN_PROMPTS_FOR_ABSENCE;
+  const omitMeta = absencesAffordable && index === count - 1;
+  const omitCategory = absencesAffordable && index === count - 2;
+
+  if (omitMeta) {
+    return { omitMeta, omitCategory, labels: null, location: null };
+  }
+
+  const omitLabels = absencesAffordable && index === 0;
+  const repeatLabel = absencesAffordable && index === 1;
+  const omitLocation = absencesAffordable && index % 2 === 1;
+
+  let labels: string | null = null;
+  if (!omitLabels) {
+    const drawn = rng.sample(PROMPT_LABEL_VOCABULARY, rng.int(2, 3));
+    labels = (repeatLabel ? [...drawn, drawn[0]] : drawn).join(", ");
+  }
+
+  return {
+    omitMeta,
+    omitCategory,
+    labels,
+    location: omitLocation ? null : rng.pick(PROMPT_LOCATIONS),
+  };
+}

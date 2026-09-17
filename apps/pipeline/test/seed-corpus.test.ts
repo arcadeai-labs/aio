@@ -33,6 +33,7 @@ import {
   type WorldSpec,
   buildCorpus,
 } from "../src/seed/scenario.js";
+import { estimatedCostUsd } from "../src/seed/world.js";
 import { DEFAULT_TARGETS } from "../src/targets.js";
 
 const ROOT = resolve(import.meta.dir, "../../..");
@@ -561,5 +562,280 @@ describe("not every metric improves", () => {
     const deltas = mentionRate.slice(1).map((v, i) => v - mentionRate[i]);
     expect(deltas.some((d) => d > 0)).toBe(true);
     expect(deltas.some((d) => d < 0)).toBe(true);
+  });
+});
+
+// ── 7. Every documented optional field, both ways ───────────────────────────
+//
+// SCHEMA.md documents six optional fields the corpus never produced, so the
+// document could only be checked against them by a credentialed run (#34).
+// Two claims are asserted here and neither is a count:
+//
+//   **Both paths.** Each optional field is populated somewhere and absent
+//   somewhere. An optional field that is always present is not being exercised
+//   as optional, and the bug that catches is a query dropping rows because a
+//   field is missing.
+//
+//   **Fidelity.** It is populated by exactly the providers that populate it in
+//   `src/providers/*.ts`. A field seeded onto every row would agree with the
+//   contract and disagree with the pipeline, and a query calibrated against it
+//   would come back wrong on real data.
+//
+// The absences are asserted under a *second* seed as well. They are positional
+// rather than sampled precisely so they cannot evaporate under `SEED=…`, and a
+// test that only ever looked at one seed could not tell the difference.
+
+describe("the optional fields are exercised both ways", () => {
+  const allResults = corpus.runs.flatMap((r) => r.results);
+  const allSources = allResults.flatMap((r) => r.searchResults);
+  const allCitations = allResults.flatMap((r) => r.citations);
+
+  /** Present-and-absent, stated once so every field reads the same way. */
+  const bothWays = (
+    field: string,
+    population: number,
+    present: number,
+  ): void => {
+    expect({
+      field,
+      present: present > 0,
+      absent: present < population,
+    }).toEqual({ field, present: true, absent: true });
+  };
+
+  test("RunMetadata.estimatedCostUsd — present and absent", () => {
+    bothWays(
+      "estimatedCostUsd",
+      allResults.length,
+      allResults.filter((r) => r.metadata.estimatedCostUsd !== undefined)
+        .length,
+    );
+  });
+
+  test("SearchResult.pageDate and SearchResult.score — present and absent", () => {
+    bothWays(
+      "pageDate",
+      allSources.length,
+      allSources.filter((s) => s.pageDate !== undefined).length,
+    );
+    bothWays(
+      "score",
+      allSources.length,
+      allSources.filter((s) => s.score !== undefined).length,
+    );
+  });
+
+  test("Citation.startIndex / endIndex — present and absent", () => {
+    bothWays(
+      "startIndex",
+      allCitations.length,
+      allCitations.filter((c) => c.startIndex !== undefined).length,
+    );
+    bothWays(
+      "endIndex",
+      allCitations.length,
+      allCitations.filter((c) => c.endIndex !== undefined).length,
+    );
+  });
+
+  test("UnifiedResult.promptCategory, promptMeta and rawSearchCalls — present and absent", () => {
+    bothWays(
+      "promptCategory",
+      allResults.length,
+      allResults.filter((r) => r.promptCategory !== undefined).length,
+    );
+    bothWays(
+      "promptMeta",
+      allResults.length,
+      allResults.filter((r) => r.promptMeta !== undefined).length,
+    );
+    bothWays(
+      "rawSearchCalls",
+      allResults.length,
+      allResults.filter((r) => r.rawSearchCalls !== undefined).length,
+    );
+    bothWays(
+      "providerMeta",
+      allResults.length,
+      allResults.filter((r) => r.metadata.providerMeta !== undefined).length,
+    );
+  });
+
+  test("promptMeta.location and promptMeta.labels — present and absent", () => {
+    const metas = [...new Map(allResults.map((r) => [r.prompt, r.promptMeta]))];
+    expect(metas.length).toBe(prompts.length);
+    bothWays(
+      "promptMeta.location",
+      metas.length,
+      metas.filter(([, m]) => m?.location !== undefined).length,
+    );
+    bothWays(
+      "promptMeta.labels",
+      metas.length,
+      metas.filter(([, m]) => m?.labels !== undefined).length,
+    );
+  });
+
+  test("a labels string repeats a label, so the de-dup at ingest has something to do", () => {
+    // `parseLabels` (packages/ingest/src/normalize.ts) splits on `,`, trims and
+    // de-dupes through a `Set`. Without a repeat anywhere in the corpus that
+    // arm is exercised by nothing, and a rewrite that dropped it would ingest
+    // cleanly and lose nothing visible.
+    const labelStrings = [
+      ...new Set(
+        allResults.flatMap((r) =>
+          r.promptMeta?.labels ? [r.promptMeta.labels] : [],
+        ),
+      ),
+    ];
+    const withRepeat = labelStrings.filter((raw) => {
+      const parts = raw.split(",").map((p) => p.trim());
+      return parts.length > new Set(parts).size;
+    });
+    expect(withRepeat.length).toBeGreaterThan(0);
+    // And the ordinary case is still the majority — a corpus made entirely of
+    // the odd case would not be a realistic subset.
+    expect(labelStrings.length - withRepeat.length).toBeGreaterThan(
+      withRepeat.length,
+    );
+  });
+
+  test("the absences survive a different seed — they are structural, not sampled", () => {
+    const other = build("a-different-world");
+    const results = other.runs.flatMap((r) => r.results);
+    const sources = results.flatMap((r) => r.searchResults);
+    const citations = results.flatMap((r) => r.citations);
+    const metas = [...new Map(results.map((r) => [r.prompt, r.promptMeta]))];
+
+    expect({
+      promptMeta: results.some((r) => r.promptMeta === undefined),
+      promptCategory: results.some((r) => r.promptCategory === undefined),
+      labels: metas.some(([, m]) => m !== undefined && m.labels === undefined),
+      location: metas.some(
+        ([, m]) => m !== undefined && m.location === undefined,
+      ),
+      cost: results.some((r) => r.metadata.estimatedCostUsd === undefined),
+      score: sources.some((s) => s.score === undefined),
+      pageDate: sources.some((s) => s.pageDate === undefined),
+      offsets: citations.some((c) => c.startIndex === undefined),
+    }).toEqual({
+      promptMeta: true,
+      promptCategory: true,
+      labels: true,
+      location: true,
+      cost: true,
+      score: true,
+      pageDate: true,
+      offsets: true,
+    });
+  });
+});
+
+describe("the optional fields agree with the providers that write them", () => {
+  const rowsOf = (provider: string) =>
+    corpus.runs
+      .flatMap((r) => r.results)
+      .filter((r) => r.metadata.provider === provider && r.error === null);
+
+  // Each pair is (field, the providers that populate it in src/providers/*.ts).
+  // Nothing outside the named set may carry the field, and every provider
+  // inside it must carry it somewhere — a one-sided check would pass over a
+  // corpus that simply stopped producing the field.
+  test("estimatedCostUsd is written by anthropic-agent and by nobody else", () => {
+    for (const target of DEFAULT_TARGETS) {
+      const populated = rowsOf(target.provider).filter(
+        (r) => r.metadata.estimatedCostUsd !== undefined,
+      ).length;
+      expect({
+        provider: target.provider,
+        populated: populated > 0,
+      }).toEqual({
+        provider: target.provider,
+        populated: target.provider === "anthropic-agent",
+      });
+    }
+  });
+
+  test("pageDate is written by anthropic and exa, and score only by exa", () => {
+    for (const target of DEFAULT_TARGETS) {
+      const sources = rowsOf(target.provider).flatMap((r) => r.searchResults);
+      expect({
+        provider: target.provider,
+        dated: sources.some((s) => s.pageDate !== undefined),
+        scored: sources.some((s) => s.score !== undefined),
+      }).toEqual({
+        provider: target.provider,
+        dated: ["anthropic", "exa"].includes(target.provider),
+        scored: target.provider === "exa",
+      });
+    }
+  });
+
+  test("citation offsets are written by openai and openrouter, and by nobody else", () => {
+    for (const target of DEFAULT_TARGETS) {
+      const citations = rowsOf(target.provider).flatMap((r) => r.citations);
+      expect({
+        provider: target.provider,
+        offset: citations.some((c) => c.startIndex !== undefined),
+      }).toEqual({
+        provider: target.provider,
+        offset: ["openai", "openrouter"].includes(target.provider),
+      });
+    }
+  });
+
+  test("every citation offset resolves to the text it claims to quote", () => {
+    // The check a reviewer runs first, and the one the field is worthless
+    // without: `citedText` is what `providers/openai.ts` and
+    // `providers/openrouter.ts` slice out of `responseText` at exactly these
+    // offsets. An offset into nothing would populate the column, satisfy the
+    // contract, and point at a passage that does not exist.
+    let checked = 0;
+    for (const result of corpus.runs.flatMap((r) => r.results)) {
+      for (const c of result.citations) {
+        if (c.startIndex === undefined) continue;
+        expect({
+          id: result.id,
+          resolved: result.responseText.slice(c.startIndex, c.endIndex),
+        }).toEqual({ id: result.id, resolved: c.citedText });
+        expect(c.citedText.length).toBeGreaterThan(0);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  test("a page is never published after the run that found it", () => {
+    for (const run of corpus.runs) {
+      for (const source of run.results.flatMap((r) => r.searchResults)) {
+        if (!source.pageDate) continue;
+        expect({
+          run: run.runDate,
+          published: source.pageDate.slice(0, 10) <= run.runDate,
+        }).toEqual({ run: run.runDate, published: true });
+      }
+    }
+  });
+
+  test("a reported cost agrees with the token counts printed beside it", () => {
+    // The result page renders tokens and cost together. A cost drawn
+    // independently of the tokens would be a number nobody can falsify by
+    // looking — this corpus's signature failure in miniature.
+    const priced = corpus.runs
+      .flatMap((r) => r.results)
+      .filter((r) => r.metadata.estimatedCostUsd !== undefined);
+    expect(priced.length).toBeGreaterThan(0);
+    for (const r of priced) {
+      const usage = r.metadata.tokenUsage;
+      expect({
+        id: r.id,
+        cost: estimatedCostUsd({
+          inputTokens: usage.inputTokens ?? 0,
+          outputTokens: usage.outputTokens ?? 0,
+          searchRequests: usage.searchRequests ?? 0,
+        }),
+      }).toEqual({ id: r.id, cost: r.metadata.estimatedCostUsd as number });
+      expect(r.metadata.estimatedCostUsd).toBeGreaterThan(0);
+    }
   });
 });

@@ -141,6 +141,7 @@ async function main(): Promise<void> {
         verdicts: run.verdictCount,
         resultsPath: run.resultsPath,
         analysisPath: run.analysisPath,
+        comparisonPath: run.comparisonPath,
       },
       "Run written",
     );
