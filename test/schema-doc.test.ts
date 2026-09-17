@@ -305,7 +305,7 @@ describe("SCHEMA.md is honest about what it has verified", () => {
 });
 
 /**
- * A guard on this file itself.
+ * Two guards on this file itself.
  *
  * The same defect has now landed twice: round 1 searched the whole document for
  * a field row and checked the wrong one; round 2 fixed that, then asserted
@@ -314,43 +314,84 @@ describe("SCHEMA.md is honest about what it has verified", () => {
  * `doc` is in scope at every assertion site, so the unscoped version is always
  * the shortest thing to write.
  *
- * So: assertions may not touch the raw document. Everything goes through
- * `sectionBody`, which anchors to a heading line. If a future guard genuinely
- * needs whole-document reach, it belongs in `sectionBody`'s contract — widen
- * that deliberately rather than reaching around it here.
+ * `sectionBody` is the contract, and it is the real protection: assertions
+ * anchor to a heading line, and a guard that genuinely needs whole-document
+ * reach belongs in `sectionBody`'s contract — widen that deliberately rather
+ * than reaching around it here.
+ *
+ * The two guards below are a speed bump on the way past that contract, not a
+ * fence around it. They catch the common shapes, which are the two that
+ * actually got written: a bare `expect(doc…)` at an assertion site, and a
+ * `doc.<method>` read outside the two sanctioned readers.
+ *
+ * An alias defeats both, and is deliberately not chased. `const raw = doc`
+ * followed by `expect(raw).toContain(…)` passes the first guard, which matches
+ * only `expect(doc`, and the second, which collects only `doc.<method>`. So do
+ * `doc.slice(0)`, a destructure, and a one-line helper that returns the
+ * document. Banning a source pattern by regex has unbounded escapes, so closing
+ * the two we happen to know about would leave the class open while these guards
+ * implied it was shut — worse than not guarding, because it stops the next
+ * person looking. Closing the class properly means an AST-level lint rule that
+ * follows the binding, not a regex over source text; that is separate work and
+ * is not attempted here.
  */
 describe("this test file cannot regress to document-wide assertions", () => {
+  /**
+   * This file's own source with comments and string literals blanked out, line
+   * breaks kept so reported line numbers still point at the real line. Both
+   * guards read the source, and the file necessarily names the patterns they
+   * ban — in the docblock above, in a failure message, and in its own path,
+   * which contains the substring `doc.test`.
+   *
+   * The quote characters below are written as `\x22` and `\x60` escapes so that
+   * these regex literals contain none themselves. Spelled literally, the first
+   * one holds an odd number of quotes, and this crude lexer reads the leftover
+   * as an unterminated string that swallows the rest of the file.
+   */
+  const codeOnly = (source: string): string => {
+    const keepLines = (match: string) =>
+      "\n".repeat(match.split("\n").length - 1);
+    return source
+      .replace(/\/\*[\s\S]*?\*\//g, keepLines)
+      .replace(/^[ \t]*\/\/.*$/gm, "")
+      .replace(/\x22(?:[^\x22\\\n]|\\.)*\x22/g, "\x22\x22")
+      .replace(/\x60(?:[^\x60\\]|\\.)*\x60/g, (m) => `\x60${keepLines(m)}\x60`);
+  };
+
+  const SELF = "test/schema-doc.test.ts";
+
+  /**
+   * Catches the bare shape — `expect(doc…)` at an assertion site — which is
+   * what round 2 shipped. An alias is not caught; see above.
+   */
   test("no assertion reads the raw document", async () => {
-    const self = await readFile(resolve(ROOT, "test/schema-doc.test.ts"), "utf-8");
+    const self = await readFile(resolve(ROOT, SELF), "utf-8");
 
-    // Strip comments first — this very docblock names the banned pattern.
-    const code = self
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
-
-    const offenders = code
+    const offenders = codeOnly(self)
       .split("\n")
       .map((line, i) => [i + 1, line.trim()] as const)
-      .filter(([, line]) => /expect\(\s*doc\b/.test(line));
+      .filter(([, line]) => /expect\(\s*doc\b/.test(line))
+      .map(
+        ([n, line]) =>
+          `${SELF}:${n}: ${line} — assert on sectionBody("<the heading line>"), which scopes the match to one section, not on the raw document`,
+      );
 
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * Catches the other shape — reading the document by method outside the two
+   * readers meant to. An alias is not caught; see above.
+   */
   test("only sectionBody and the ingest-seam scan may read the raw document", async () => {
-    const self = await readFile(resolve(ROOT, "test/schema-doc.test.ts"), "utf-8");
-
-    // Strip comments *and* string literals: this file's own path contains the
-    // substring "doc.test", which would otherwise read as a document access.
-    const code = self
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "")
-      .replace(/"(?:[^"\\]|\\.)*"/g, '""')
-      .replace(/`(?:[^`\\]|\\.)*`/g, "``");
+    const self = await readFile(resolve(ROOT, SELF), "utf-8");
 
     // Two readers by design: sectionBody, which anchors to a heading line, and
     // the ingest-seam scan, which walks table rows across every section on
     // purpose. Anything else is a guard reaching around the helper.
-    const reads = [...new Set([...code.matchAll(/\bdoc\.\w+/g)].map((m) => m[0]))];
+    const reads = [
+      ...new Set([...codeOnly(self).matchAll(/\bdoc\.\w+/g)].map((m) => m[0])),
+    ];
     expect(reads.sort()).toEqual(["doc.indexOf", "doc.slice", "doc.split"]);
   });
 });
