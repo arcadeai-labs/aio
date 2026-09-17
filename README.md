@@ -153,11 +153,11 @@ could have worked returned nothing:
 ────────────────────────────────────────────────────────────────────────
 RUN SUMMARY
 ────────────────────────────────────────────────────────────────────────
-  OK             openai/gpt-5.6-terra       16/16 ok
-  FAILED         anthropic/claude-sonnet-5   0/16 ok      HTTP_404×16
-                                            ↳ 404 model not found
-  NO CREDENTIALS perplexity/sonar-pro        0/16 ok      missing_credentials×16
-                                            ↳ Missing credentials: PERPLEXITY_API_KEY is not set, so Perplexity cannot run.
+  OK             openai/gpt-5.6-terra         16/16 ok
+  FAILED         anthropic/claude-sonnet-5     0/16 ok     HTTP_404×16
+                                              ↳ 404 model not found
+  NO CREDENTIALS perplexity/perplexity/sonar   0/16 ok     missing_credentials×16
+                                              ↳ Missing credentials: PERPLEXITY_API_KEY is not set, so Perplexity cannot run.
 ────────────────────────────────────────────────────────────────────────
 ```
 
@@ -211,7 +211,7 @@ something that maintains itself. To customize, write a JSON file and pass
 ```json
 [
   { "provider": "anthropic", "model": "claude-sonnet-5" },
-  { "provider": "perplexity", "model": "sonar-pro" },
+  { "provider": "perplexity", "model": "perplexity/sonar" },
   {
     "provider": "exa",
     "model": "exa-auto",

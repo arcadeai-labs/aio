@@ -99,7 +99,7 @@ describe("targets", () => {
   });
 
   test("targetForProvider returns the entry or undefined", () => {
-    expect(targetForProvider("perplexity")?.model).toBe("sonar-pro");
+    expect(targetForProvider("perplexity")?.model).toBe("perplexity/sonar");
     expect(targetForProvider("nope")).toBeUndefined();
   });
 

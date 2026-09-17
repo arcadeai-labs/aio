@@ -130,7 +130,7 @@ const SEARCH_TOOLS: Record<string, string> = {
   anthropic: "web_search_20250305",
   "anthropic-agent": "claude-agent-sdk-websearch",
   openrouter: "openrouter-online",
-  perplexity: "perplexity-sonar",
+  perplexity: "perplexity-agent",
   exa: "exa-search",
   codex: "codex-web-search",
 };

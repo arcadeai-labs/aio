@@ -206,7 +206,7 @@ describe("the anthropic-agent regression of 2026-09-16", () => {
     { provider: "anthropic", model: "claude-sonnet-5" },
     { provider: "anthropic-agent", model: "claude-sonnet-4-6" },
     { provider: "openrouter", model: "openai/gpt-5.6-terra:online" },
-    { provider: "perplexity", model: "sonar-pro" },
+    { provider: "perplexity", model: "perplexity/sonar" },
     { provider: "exa", model: "exa-auto" },
   ];
 
