@@ -19,9 +19,9 @@ const ROOT = resolve(import.meta.dir, "..");
 const doc = await readFile(resolve(ROOT, "SCHEMA.md"), "utf-8");
 
 /**
- * The body of a section: everything from `heading` to the next heading of the
- * same level or shallower. `heading` must be the literal markdown heading line,
- * so a guard cannot be satisfied by the same words appearing in prose.
+ * The body of a section: everything from `heading` to the next heading of any
+ * level. `heading` must be the literal markdown heading line, so a guard cannot
+ * be satisfied by the same words appearing in prose.
  *
  * **Every assertion in this file goes through here.** Scoping is the whole
  * point: a document-wide `doc.includes(x)` passes when `x` is moved to an
