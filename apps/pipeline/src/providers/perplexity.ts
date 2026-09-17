@@ -267,6 +267,15 @@ export class PerplexityProvider extends BaseProvider {
     // *successful* result with empty text — the single most likely way this
     // migration ships a silent zero. Exercised by a synthesised response in
     // `test/perplexity-provider.test.ts`.
+    //
+    // Stricter than `healthCheck()` on purpose: that method treats
+    // `incomplete` as healthy, because there it only means the probe hit its
+    // own token budget. Here it means the *answer* was cut off, and a truncated
+    // answer is worse than a missing one — the brand may well have been
+    // mentioned in the part that never arrived, so the judge scores "not
+    // mentioned" and the dashboard moves for a reason that is not about the
+    // brand at all. A measurement that might be wrong is rejected; a health
+    // probe that was merely brief is not.
     if (response.status !== "completed") {
       const detail = response.error?.message ?? "no error detail returned";
       throw new PerplexityAgentError(
