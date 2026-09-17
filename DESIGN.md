@@ -469,11 +469,25 @@ separated into a standalone, forkable project. Four decisions define that split;
 each exists because the internal version had the opposite property.
 
 **Brand is configuration, never a constant.** Every brand and competitor name
-lives in `analytics.config.json`. Two templates ship: `analytics.config.example.json`
-(a fictional to-do app, Taskwell, matching `prompts/default.csv`) and
-`analytics.config.demo.json` (Todoist — real and widely written about, so a
-first run returns genuine data instead of an all-zero dashboard). The real
-config is gitignored.
+lives in `analytics.config.json`, which is gitignored. **One template ships**:
+`analytics.config.example.json` — a fictional to-do app, Taskwell, matching
+`prompts/default.csv` and carrying `"synthetic": true`.
+
+A second template used to ship alongside it, tracking a real product so that a
+credentialed first run returned genuine data rather than an all-zero dashboard.
+**#5 deleted it** (2026-09-17), because the seed corpus closed the gap it
+existed for: `bun run seed` now produces a populated, marked dashboard with no
+API keys at all, which is strictly better than needing someone else's brand to
+see the tool work.
+
+The cost of that deletion is real and is paid in the README rather than in code:
+the one remaining template describes a brand that **does not exist**, so a
+credentialed run against it unedited returns "not mentioned" from every provider
+and draws a confident 0% — correct behaviour that looks exactly like a broken
+install. The README therefore leads with the keyless seed path and tells the
+reader, in those words, to edit the config *and* `prompts/default.csv` before
+spending anything. If that warning is ever trimmed for brevity, this is what it
+was protecting against.
 
 The failure mode this guards against is silent. `DEFAULT_BRAND_NAME` in
 `packages/db/src/queries.ts` was a real brand string; a run whose config
