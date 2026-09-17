@@ -19,19 +19,43 @@ const ROOT = resolve(import.meta.dir, "..");
 const doc = await readFile(resolve(ROOT, "SCHEMA.md"), "utf-8");
 
 /**
- * The body of a `### <Type>` section: everything from the heading to the next
- * heading of any level. Scoping by section is what makes the not-ingested guard
- * below trustworthy — `promptCategory` and `mentioned` each appear in two
- * tables with *different* answers (one ingested, one not), so a document-wide
- * search for either would silently check the wrong row.
+ * The body of a section: everything from `heading` to the next heading of the
+ * same level or shallower. `heading` must be the literal markdown heading line,
+ * so a guard cannot be satisfied by the same words appearing in prose.
+ *
+ * **Every assertion in this file goes through here.** Scoping is the whole
+ * point: a document-wide `doc.includes(x)` passes when `x` is moved to an
+ * unrelated part of SCHEMA.md, which is exactly how this document will rot as
+ * it is edited — text gets relocated far more often than it gets deleted. Round
+ * 2 fixed that for the per-field guards and then reintroduced it for the #34
+ * link; round 3 routes everything through one helper so there is no second
+ * path to get it wrong.
+ */
+function sectionBody(heading: string): string {
+  if (!/^#+ /.test(heading)) throw new Error(`not a heading: ${heading}`);
+
+  // Anchored to line start, so the same words appearing in prose cannot
+  // satisfy a guard — only the real heading line can.
+  const at = doc.indexOf(`\n${heading}\n`);
+  if (at === -1) throw new Error(`SCHEMA.md has no heading line: ${heading}`);
+
+  // Stop at the *next heading of any level*. Subsections are deliberately
+  // excluded: a string that belongs in a section's own prose should fail this
+  // guard if it is demoted into a subsection, because that moves it away from
+  // the reader who arrives at the section heading.
+  const rest = doc.slice(at + heading.length + 2);
+  const end = rest.search(/^#{1,6} /m);
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+/**
+ * The body of a `### <Type>` contract section — the tables that `promptCategory`
+ * and `mentioned` each appear in twice, with *different* answers (one ingested,
+ * one not). A document-wide search for either name finds the ingested row first
+ * and passes while the un-ingested one rots.
  */
 function sectionFor(typeName: string): string {
-  const heading = `### \`${typeName}\``;
-  const start = doc.indexOf(heading);
-  if (start === -1) throw new Error(`SCHEMA.md has no section ${heading}`);
-  const rest = doc.slice(start + heading.length);
-  const end = rest.search(/^#{1,4} /m);
-  return end === -1 ? rest : rest.slice(0, end);
+  return sectionBody(`### \`${typeName}\``);
 }
 
 /**
@@ -117,7 +141,7 @@ describe("SCHEMA.md documents every shipped data contract", () => {
 });
 
 describe("SCHEMA.md states the ingest seam", () => {
-  test("names every table the ingest transform writes", () => {
+  test("names every table the ingest transform writes, as a real destination", () => {
     const tables = [
       "prompts",
       "prompt_labels",
@@ -131,7 +155,30 @@ describe("SCHEMA.md states the ingest seam", () => {
       "competitor_mentions",
       "competitor_cited_urls",
     ];
-    const missing = tables.filter((t) => !doc.includes(t));
+
+    // Round 2 asserted `doc.includes(t)`, which is vacuous: "results" and
+    // "verdicts" are ordinary English words this document uses in prose on
+    // nearly every page ("1,440 results", "885 unmentioned verdicts"). That
+    // guard passed with *every* `results.*` and `verdicts.*` column reference
+    // renamed to a table that does not exist.
+    //
+    // A table counts as named only if it appears **backticked inside a table
+    // cell**, as `table` or `table.column` — never from running prose. The DB
+    // column is the third cell in the contract tables and the second in the
+    // `promptMeta` key table, so every cell but the first is scanned rather
+    // than hardcoding an index per table shape.
+    const destinations = new Set<string>();
+    for (const line of doc.split("\n")) {
+      if (!line.startsWith("|")) continue;
+      const cells = line.slice(1).split(/(?<!\\)\|/);
+      for (const cell of cells.slice(1)) {
+        for (const [, table] of cell.matchAll(/`([a-z_]+)(?:\.[a-z_0-9]+)?`/g)) {
+          destinations.add(table);
+        }
+      }
+    }
+
+    const missing = tables.filter((t) => !destinations.has(t));
     expect(missing).toEqual([]);
   });
 
@@ -204,11 +251,18 @@ describe("SCHEMA.md is honest about what it has verified", () => {
     "## How much of this document is confirmed against data";
 
   test("carries the verification-status section", () => {
-    expect(doc).toContain(VERIFICATION_HEADING);
+    // sectionBody throws unless VERIFICATION_HEADING exists as a real heading
+    // line; prose repeating the words is not enough.
+    expect(sectionBody(VERIFICATION_HEADING).length).toBeGreaterThan(0);
   });
 
-  test("points at the issue that closes the gap", () => {
-    expect(doc).toContain("/issues/34");
+  test("points at the issue that closes the gap, from inside that section", () => {
+    // Scoped deliberately. `expect(doc).toContain("/issues/34")` — what this
+    // was in round 2 — passes when the link is deleted from the verification
+    // section and added anywhere else in the file. The link is only useful to
+    // a reader who has just read that a field is unverified, so that is where
+    // it has to be.
+    expect(sectionBody(VERIFICATION_HEADING)).toContain("/issues/34");
   });
 
   // (type, field) pairs the seeded corpus does not populate. The row must both
@@ -236,12 +290,7 @@ describe("SCHEMA.md is honest about what it has verified", () => {
   // rather than by contract field, so they are checked by section name.
   for (const key of ["location", "labels"]) {
     test(`promptMeta.${key} is marked as not exercised by the corpus`, () => {
-      const start = doc.indexOf("#### `promptMeta`");
-      expect(start).toBeGreaterThan(-1);
-      const rest = doc.slice(start + "#### `promptMeta`".length);
-      const end = rest.search(/^#{1,4} /m);
-      const section = end === -1 ? rest : rest.slice(0, end);
-      const row = section
+      const row = sectionBody("#### `promptMeta`")
         .split("\n")
         .find((l) => l.startsWith(`| \`${key}\``));
       expect(row).toBeDefined();
@@ -250,9 +299,58 @@ describe("SCHEMA.md is honest about what it has verified", () => {
   }
 
   test("says plainly that no Learning record has been observed", () => {
-    const start = doc.indexOf(VERIFICATION_HEADING);
-    const section = doc.slice(start, doc.indexOf("\n## ", start + 1));
-    expect(section).toContain("Learning");
+    const section = sectionBody(VERIFICATION_HEADING);
     expect(section).toContain("no `Learning` record has been observed");
+  });
+});
+
+/**
+ * A guard on this file itself.
+ *
+ * The same defect has now landed twice: round 1 searched the whole document for
+ * a field row and checked the wrong one; round 2 fixed that, then asserted
+ * `expect(doc).toContain("/issues/34")` two screens below the fix. Both passed
+ * review once. The failure is not carelessness about one string — it is that
+ * `doc` is in scope at every assertion site, so the unscoped version is always
+ * the shortest thing to write.
+ *
+ * So: assertions may not touch the raw document. Everything goes through
+ * `sectionBody`, which anchors to a heading line. If a future guard genuinely
+ * needs whole-document reach, it belongs in `sectionBody`'s contract — widen
+ * that deliberately rather than reaching around it here.
+ */
+describe("this test file cannot regress to document-wide assertions", () => {
+  test("no assertion reads the raw document", async () => {
+    const self = await readFile(resolve(ROOT, "test/schema-doc.test.ts"), "utf-8");
+
+    // Strip comments first — this very docblock names the banned pattern.
+    const code = self
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+
+    const offenders = code
+      .split("\n")
+      .map((line, i) => [i + 1, line.trim()] as const)
+      .filter(([, line]) => /expect\(\s*doc\b/.test(line));
+
+    expect(offenders).toEqual([]);
+  });
+
+  test("only sectionBody and the ingest-seam scan may read the raw document", async () => {
+    const self = await readFile(resolve(ROOT, "test/schema-doc.test.ts"), "utf-8");
+
+    // Strip comments *and* string literals: this file's own path contains the
+    // substring "doc.test", which would otherwise read as a document access.
+    const code = self
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+      .replace(/`(?:[^`\\]|\\.)*`/g, "``");
+
+    // Two readers by design: sectionBody, which anchors to a heading line, and
+    // the ingest-seam scan, which walks table rows across every section on
+    // purpose. Anything else is a guard reaching around the helper.
+    const reads = [...new Set([...code.matchAll(/\bdoc\.\w+/g)].map((m) => m[0]))];
+    expect(reads.sort()).toEqual(["doc.indexOf", "doc.slice", "doc.split"]);
   });
 });
