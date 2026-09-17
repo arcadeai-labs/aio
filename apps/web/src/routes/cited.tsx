@@ -174,6 +174,9 @@ function Cited() {
               trend={reachTrend}
               runOrder={runOrder}
               focusIndex={focusIndex}
+              // The scope the reach figure and its "N of M results" caption are
+              // both computed over (issue #23).
+              snapshot={`${segment}·${theme}·${activeRunDate ?? "none"}`}
             />
             <OwnedUrlSection
               urls={ownedUrls}
@@ -258,11 +261,16 @@ function ReachSection({
   trend,
   runOrder,
   focusIndex,
+  snapshot,
 }: {
   current: OwnedReachPoint["reach"] | null;
   trend: OwnedReachPoint[];
   runOrder: string[];
   focusIndex: number;
+  /** Segment · theme · focused run — the scope this rate and its denominator
+   * caption both describe. Changing scope must swap them together, never tween
+   * the rate across the change (issue #23). */
+  snapshot: string;
 }) {
   const [view, setView] = useState<ViewMode>("chart");
 
@@ -294,6 +302,7 @@ function ReachSection({
             className="cited__statnum"
             value={current.rate}
             format={pct}
+            snapshot={snapshot}
           />
           <span className="cited__statmeta">
             {count(current.cited)} of {count(current.all)} results · focused run
